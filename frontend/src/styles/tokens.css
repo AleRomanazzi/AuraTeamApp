@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #0c0f14;
+  --surface: #141820;
+  --surface2: #1c2230;
+  --border: #252d3d;
+  --accent: #4fffb0;
+  --accent2: #7c6fff;
+  --accent3: #ff6b6b;
+  --text: #e8edf5;
+  --text-muted: #6b7a99;
+  --text-dim: #3d4d6a;
+  --gold: #ffd166;
+  --font-display: 'DM Serif Display', serif;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --radius: 12px;
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import AURA_LOGO from '../assets/auraLogoSrc'
 import { api } from '../lib/api'
 import { useAuthStore } from '../store/authStore'
@@ -67,9 +67,6 @@ export default function Login() {
             {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
-        <p style={{ marginTop: 20, fontSize: 13, color: 'var(--text-dim)' }}>
-          ¿No tenés cuenta? <Link to="/register">Registrate</Link>
-        </p>
       </div>
     </div>
   )

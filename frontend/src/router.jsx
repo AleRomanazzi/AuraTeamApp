@@ -12,7 +12,6 @@ import Ingresos from './pages/Ingresos'
 import Login from './pages/Login'
 import Perfiles from './pages/Perfiles'
 import Personal from './pages/Personal'
-import Register from './pages/Register'
 import Servicios from './pages/Servicios'
 
 const protectedLayout = (
@@ -27,7 +26,6 @@ const protectedLayout = (
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
-  { path: '/register', element: <Register /> },
   {
     path: '/',
     element: protectedLayout,

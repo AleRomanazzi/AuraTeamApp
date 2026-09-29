@@ -1,8 +1,9 @@
 /**
- * Gmail/Calendar vía gapi.client + OAuth (Google Identity Services).
- * Evita gapi.auth2 (deprecado), que dispara errores en migration_mod.
+ * Gmail/Calendar vía gapi.client. La cuenta de Google de la agencia queda conectada en el servidor
+ * (refresh token), que entrega access tokens de corta duración: acá solo se piden y se renuevan.
  */
 
+import { api } from '../../lib/api'
 import { useGoogleStore } from './googleStore'
 
 const DISCOVERY_DOCS = [
@@ -10,37 +11,11 @@ const DISCOVERY_DOCS = [
   'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest',
 ]
 
-const SCOPES =
-  'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar'
+const MARGEN_RENOVACION_MS = 5 * 60 * 1000
 
 let discoveryInited = false
-
-function loadGisScript() {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined') {
-      reject(new Error('Sin window'))
-      return
-    }
-    if (window.google?.accounts?.oauth2?.initTokenClient) {
-      resolve()
-      return
-    }
-    const existing = document.querySelector('script[data-aura-gis="1"]')
-    if (existing) {
-      existing.addEventListener('load', () => resolve())
-      existing.addEventListener('error', () => reject(new Error('Error cargando Google Identity Services')))
-      return
-    }
-    const script = document.createElement('script')
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.defer = true
-    script.dataset.auraGis = '1'
-    script.onload = () => resolve()
-    script.onerror = () => reject(new Error('No se pudo cargar accounts.google.com/gsi/client'))
-    document.head.appendChild(script)
-  })
-}
+let renovacion = null
+let enCurso = null
 
 function loadGapiClientModule() {
   return new Promise((resolve, reject) => {
@@ -75,57 +50,34 @@ function loadGapiClientModule() {
   })
 }
 
-/**
- * @param {string} clientId
- * @param {{ prompt?: string, hint?: string }} [opts]
- */
-function requestAccessToken(clientId, opts = {}) {
-  const { prompt = '', hint } = opts
-  return new Promise((resolve, reject) => {
-    const initCfg = {
-      client_id: clientId,
-      scope: SCOPES,
-      callback: (resp) => {
-        if (resp.error) {
-          reject(new Error(resp.error_description || resp.error || 'OAuth cancelado'))
-          return
-        }
-        if (!resp.access_token) {
-          reject(new Error('No se recibió access_token'))
-          return
-        }
-        resolve(resp.access_token)
-      },
-    }
-    if (hint?.trim()) {
-      initCfg.hint = hint.trim()
-    }
-    const tc = window.google.accounts.oauth2.initTokenClient(initCfg)
-    tc.requestAccessToken({ prompt: prompt === undefined ? '' : prompt })
-  })
+function programarRenovacion(expiresIn) {
+  clearTimeout(renovacion)
+  const ms = Math.max(expiresIn * 1000 - MARGEN_RENOVACION_MS, 30 * 1000)
+  renovacion = setTimeout(() => {
+    conectarGoogle().catch(() => signOutGoogle())
+  }, ms)
 }
 
-/**
- * @param {{ apiKey?: string, clientId: string }} creds
- * @param {{ prompt?: string, hint?: string }} [tokenOpts] prompt: '' silencioso; 'select_account' abre selector de cuenta
- * @returns {Promise<void>}
- */
-export async function initGapiClientAndSignIn(creds, tokenOpts = {}) {
-  const { apiKey, clientId } = creds
-  if (!clientId?.trim()) {
-    throw new Error('Falta Client ID')
-  }
-  await loadGisScript()
+async function _conectar() {
   await loadGapiClientModule()
   if (!discoveryInited) {
-    const initOpts = { discoveryDocs: DISCOVERY_DOCS }
-    if (apiKey?.trim()) initOpts.apiKey = apiKey.trim()
-    await window.gapi.client.init(initOpts)
+    await window.gapi.client.init({ discoveryDocs: DISCOVERY_DOCS })
     discoveryInited = true
   }
-  const accessToken = await requestAccessToken(clientId.trim(), tokenOpts)
-  window.gapi.client.setToken({ access_token: accessToken })
+  const { data } = await api.get('auth/google/token/')
+  window.gapi.client.setToken({ access_token: data.access_token })
+  programarRenovacion(data.expires_in)
   useGoogleStore.getState().touchGoogleSession()
+}
+
+/** Pide al servidor un access token de la cuenta de la agencia y lo deja cargado en gapi. */
+export function conectarGoogle() {
+  if (!enCurso) {
+    enCurso = _conectar().finally(() => {
+      enCurso = null
+    })
+  }
+  return enCurso
 }
 
 export function isSignedIn() {
@@ -136,15 +88,14 @@ export function isSignedIn() {
   }
 }
 
+/** Solo limpia el token de este navegador: la conexión de la agencia sigue viva en el servidor. */
 export function signOutGoogle() {
+  clearTimeout(renovacion)
+  renovacion = null
   try {
-    const tok = window.gapi?.client?.getToken?.()
-    if (tok?.access_token && typeof window.google?.accounts?.oauth2?.revoke === 'function') {
-      window.google.accounts.oauth2.revoke(tok.access_token, () => {})
-    }
-    window.gapi?.client?.setToken?.('')
-    useGoogleStore.getState().touchGoogleSession()
+    window.gapi?.client?.setToken?.(null)
   } catch {
     /* ignore */
   }
+  useGoogleStore.getState().touchGoogleSession()
 }

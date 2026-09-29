@@ -15,11 +15,15 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
-# Credenciales Google OAuth fijas para toda la instalación (opcional). Si AURA_GOOGLE_CLIENT_ID está definido,
-# el API devuelve esos valores en /auth/me/ y el usuario no puede cambiarlos por /me/config/.
-AURA_GOOGLE_API_KEY = os.getenv("AURA_GOOGLE_API_KEY", "").strip()
+# Cuenta de Google de la agencia (Gmail y Calendar), conectada una sola vez desde Configuración.
+# El redirect URI debe estar autorizado en el cliente OAuth de Google Cloud.
 AURA_GOOGLE_CLIENT_ID = os.getenv("AURA_GOOGLE_CLIENT_ID", "").strip()
+AURA_GOOGLE_CLIENT_SECRET = os.getenv("AURA_GOOGLE_CLIENT_SECRET", "").strip()
+AURA_GOOGLE_REDIRECT_URI = os.getenv("AURA_GOOGLE_REDIRECT_URI", "").strip()
 AURA_GOOGLE_LOGIN_HINT = os.getenv("AURA_GOOGLE_LOGIN_HINT", "").strip()
+# Clave para cifrar el refresh token; si falta se deriva de SECRET_KEY (cambiarla obliga a reconectar).
+AURA_GOOGLE_TOKEN_KEY = os.getenv("AURA_GOOGLE_TOKEN_KEY", "").strip()
+FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
 DEBUG = env_bool("DEBUG", False)
 TESTING = "pytest" in sys.modules

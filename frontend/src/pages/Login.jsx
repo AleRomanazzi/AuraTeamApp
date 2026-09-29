@@ -27,11 +27,6 @@ export default function Login() {
     setError('')
     try {
       const { data } = await api.post('auth/login/', { username: username.trim(), password })
-      try {
-        sessionStorage.setItem('aura_post_login_google', '1')
-      } catch {
-        /* ignore */
-      }
       setTokens(data.access, data.refresh)
     } catch (err) {
       const status = err.response?.status

@@ -15,6 +15,14 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: AURA_GOOGLE_CLIENT_ID
+        sync: false
+      - key: AURA_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: AURA_GOOGLE_LOGIN_HINT
+        sync: false
       - key: AI_PROVIDER
         sync: false
       - key: AI_API_KEY

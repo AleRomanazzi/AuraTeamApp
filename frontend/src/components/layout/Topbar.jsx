@@ -14,7 +14,7 @@ export default function Topbar({ onToggleSidebar }) {
   const { data: me } = useMe()
   const [saliendo, setSaliendo] = useState(false)
   useGoogleStore((s) => s.tokenVersion)
-  const googleActivo = Boolean(me?.google_connected) && isSignedIn()
+  const googleActivo = Boolean(me?.google_conectado) && isSignedIn()
 
   const salir = async () => {
     setSaliendo(true)
@@ -31,7 +31,7 @@ export default function Topbar({ onToggleSidebar }) {
       </button>
       <div className="topbar-right">
         <span className="badge">{hoy}</span>
-        {me?.google_connected ? (
+        {me?.es_admin && me?.google_conectado ? (
           <span className="topbar-google" style={{ color: googleActivo ? 'var(--accent)' : 'var(--text-dim)' }}>
             {googleActivo ? '● Google conectado' : '○ Google sin sesión'}
           </span>

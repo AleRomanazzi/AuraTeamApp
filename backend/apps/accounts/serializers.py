@@ -1,7 +1,8 @@
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+
+from .models import CuentaGoogle
 
 User = get_user_model()
 
@@ -23,24 +24,13 @@ class MeSerializer(serializers.ModelSerializer):
             'es_admin',
             'persona',
             'persona_nombre',
-            'google_api_key',
-            'google_client_id',
-            'gmail_account',
-            'google_connected',
+            'google_conectado',
         )
 
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        fixed_cid = getattr(settings, 'AURA_GOOGLE_CLIENT_ID', '') or ''
-        fixed_key = getattr(settings, 'AURA_GOOGLE_API_KEY', '') or ''
-        hint = getattr(settings, 'AURA_GOOGLE_LOGIN_HINT', '') or ''
-        data['google_oauth_managed'] = bool(fixed_cid or fixed_key)
-        data['google_login_hint'] = hint
-        if fixed_cid:
-            data['google_client_id'] = fixed_cid
-        if fixed_key:
-            data['google_api_key'] = fixed_key
-        return data
+    google_conectado = serializers.SerializerMethodField()
+
+    def get_google_conectado(self, obj):
+        return CuentaGoogle.objects.exists()
 
 
 class UsuarioSerializer(serializers.ModelSerializer):

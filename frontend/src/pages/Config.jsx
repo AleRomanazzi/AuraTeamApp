@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Field from '../components/ui/Field'
@@ -7,7 +7,7 @@ import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
 import Tabs from '../components/ui/Tabs'
 import Tag from '../components/ui/Tag'
-import { initGapiClientAndSignIn, isSignedIn, signOutGoogle } from '../features/google/gapiClient'
+import { isSignedIn, signOutGoogle } from '../features/google/gapiClient'
 import { useGoogleStore } from '../features/google/googleStore'
 import { useCategorias, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
@@ -102,82 +102,104 @@ function Perfil({ me }) {
   )
 }
 
+const RESULTADO_GOOGLE = {
+  ok: ['Cuenta de Google de la agencia conectada', 'success'],
+  cancelado: ['Se canceló la conexión con Google', 'error'],
+}
+
+/** Muestra una sola vez el resultado con el que vuelve Google (?google=ok|error|cancelado) y limpia la URL. */
+function useResultadoGoogle() {
+  const qc = useQueryClient()
+  const [sp, setSp] = useSearchParams()
+  const resultado = sp.get('google')
+  const motivo = sp.get('motivo')
+  useEffect(() => {
+    if (!resultado) return
+    const [msg, tipo] = RESULTADO_GOOGLE[resultado] || [`No se pudo conectar Google${motivo ? `: ${motivo}` : ''}`, 'error']
+    notify(msg, tipo)
+    qc.invalidateQueries({ queryKey: QK.me })
+    qc.invalidateQueries({ queryKey: QK.googleEstado })
+    setSp({ tab: 'google' }, { replace: true })
+  }, [resultado, motivo, qc, setSp])
+}
+
 function Google({ me }) {
   const qc = useQueryClient()
+  useResultadoGoogle()
   useGoogleStore((s) => s.tokenVersion)
-  const conectado = isSignedIn()
-  const gestionado = me.google_oauth_managed
-  const [f, setF] = useState({ google_api_key: me.google_api_key || '', google_client_id: me.google_client_id || '', gmail_account: me.gmail_account || '' })
-  const [conectando, setConectando] = useState(false)
+  const q = useQuery({ queryKey: QK.googleEstado, queryFn: () => api.get('auth/google/').then((r) => r.data) })
 
-  const conectar = async () => {
-    const clientId = (gestionado ? me.google_client_id : f.google_client_id).trim()
-    if (!clientId) {
-      notify(gestionado ? 'Falta AURA_GOOGLE_CLIENT_ID en el servidor' : 'Ingresá el Client ID primero', 'error')
-      return
-    }
-    setConectando(true)
-    try {
-      await initGapiClientAndSignIn({ apiKey: (gestionado ? me.google_api_key : f.google_api_key).trim(), clientId }, { prompt: 'select_account', hint: me.google_login_hint || undefined })
-      await api.put('me/config/', { ...(gestionado ? { gmail_account: f.gmail_account } : f), google_connected: true })
-      await qc.invalidateQueries({ queryKey: QK.me })
-      await qc.invalidateQueries({ queryKey: ['google-calendar'] })
-      notify('Google conectado')
-    } catch (e) {
-      notify(String(e?.result?.error?.message || e?.message || 'No se pudo conectar (revisá los orígenes autorizados en Google Cloud)'), 'error')
-    } finally {
-      setConectando(false)
-    }
-  }
+  const conectar = useMutation({
+    mutationFn: () => api.post('auth/google/conectar/').then((r) => r.data),
+    onSuccess: ({ url }) => window.location.assign(url),
+    onError: (e) => notifyError(e, 'No se pudo iniciar la conexión con Google'),
+  })
 
-  const desconectar = async () => {
-    signOutGoogle()
-    useGoogleStore.getState().reset()
-    qc.removeQueries({ queryKey: ['google-calendar'] })
-    qc.removeQueries({ queryKey: ['gmail'] })
-    try {
-      await api.put('me/config/', { google_connected: false })
-      await qc.invalidateQueries({ queryKey: QK.me })
-    } catch (e) {
-      notifyError(e)
-    }
-    notify('Google desconectado en este navegador')
-  }
+  const desconectar = useMutation({
+    mutationFn: () => api.post('auth/google/desconectar/'),
+    onSuccess: async () => {
+      signOutGoogle()
+      useGoogleStore.getState().reset()
+      qc.removeQueries({ queryKey: ['google-calendar'] })
+      qc.removeQueries({ queryKey: ['gmail'] })
+      await Promise.all([qc.invalidateQueries({ queryKey: QK.me }), qc.invalidateQueries({ queryKey: QK.googleEstado })])
+      notify('Cuenta de Google desconectada')
+    },
+    onError: (e) => notifyError(e),
+  })
 
   return (
     <div className="card" style={{ maxWidth: 640 }}>
       <div className="card-title">
         <span className="dot" /> Google (Gmail y Calendar)
       </div>
-      <p className="small">
-        Estado: {conectado ? <Tag color="green">Conectado</Tag> : <Tag>No conectado</Tag>}
-        {me.google_login_hint ? <span className="muted"> · cuenta sugerida {me.google_login_hint}</span> : null}
-      </p>
-      {gestionado ? (
-        <div className="info-box">Las credenciales de Google están configuradas en el servidor. Solo tenés que conectar tu cuenta.</div>
-      ) : (
-        <>
-          <Field label="Client ID (OAuth)">
-            <input value={f.google_client_id} onChange={(e) => setF((s) => ({ ...s, google_client_id: e.target.value }))} placeholder="xxxx.apps.googleusercontent.com" />
-          </Field>
-          <Field label="API Key (opcional)">
-            <input value={f.google_api_key} onChange={(e) => setF((s) => ({ ...s, google_api_key: e.target.value }))} />
-          </Field>
-        </>
-      )}
-      <Field label="Cuenta de Gmail de la agencia">
-        <input type="email" value={f.gmail_account} onChange={(e) => setF((s) => ({ ...s, gmail_account: e.target.value }))} />
-      </Field>
-      <div className="header-actions">
-        <button type="button" className="btn btn-primary btn-sm" disabled={conectando} onClick={conectar}>
-          {conectando ? 'Conectando…' : conectado ? 'Reconectar' : 'Conectar Google'}
-        </button>
-        {conectado ? (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={desconectar}>
-            Desconectar
-          </button>
-        ) : null}
-      </div>
+      <QueryState query={q}>
+        {(estado) => (
+          <>
+            <p className="small">
+              Estado: {estado.conectado ? <Tag color="green">Conectada</Tag> : <Tag>No conectada</Tag>}
+              {estado.conectado ? (
+                <span className="muted">
+                  {' '}
+                  · {estado.email || 'cuenta de la agencia'} · desde {formatFechaHora(estado.conectada_en)}
+                  {me.es_admin ? (isSignedIn() ? ' · activa en este navegador' : ' · cargando en este navegador…') : ''}
+                </span>
+              ) : null}
+            </p>
+            {!estado.configurado ? (
+              <div className="info-box">Faltan las credenciales de Google en el servidor (AURA_GOOGLE_CLIENT_ID y AURA_GOOGLE_CLIENT_SECRET).</div>
+            ) : estado.conectado ? (
+              <div className="info-box">
+                La cuenta queda conectada de forma permanente para todo el panel: no hace falta volver a iniciar sesión en Google en cada navegador ni al entrar.
+              </div>
+            ) : (
+              <div className="info-box">
+                Conectá una sola vez la cuenta de la agencia{estado.cuenta_sugerida ? ` (${estado.cuenta_sugerida})` : ''}. Google te va a pedir que elijas la cuenta y aceptes los permisos de Gmail y Calendar.
+              </div>
+            )}
+            {me.es_admin && estado.configurado ? (
+              <div className="header-actions" style={{ marginTop: 12 }}>
+                <button type="button" className="btn btn-primary btn-sm" disabled={conectar.isPending} onClick={() => conectar.mutate()}>
+                  {conectar.isPending ? 'Redirigiendo a Google…' : estado.conectado ? 'Cambiar o reconectar cuenta' : 'Conectar cuenta de Google'}
+                </button>
+                {estado.conectado ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    disabled={desconectar.isPending}
+                    onClick={async () =>
+                      (await confirmar({ mensaje: 'Se va a desconectar la cuenta de Google para todo el panel (Gmail y Calendar dejan de funcionar hasta reconectar).', peligro: true, confirmar: 'Desconectar' })) &&
+                      desconectar.mutate()
+                    }
+                  >
+                    Desconectar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        )}
+      </QueryState>
     </div>
   )
 }

@@ -1,210 +1,226 @@
-import { useMemo } from 'react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { usePhase1 } from '../context/Phase1Context'
-import { listPrimaryMonthEvents } from '../features/google/calendarApi'
-import { isSignedIn } from '../features/google/gapiClient'
-import { useGoogleStore } from '../features/google/googleStore'
-import { fmt, parseFrom } from '../lib/format'
-import { monthlyEquivalentMonto } from '../lib/serviciosAmounts'
-import { notify } from '../lib/notify'
+import BarChart from '../components/ui/BarChart'
+import MonthPicker from '../components/ui/MonthPicker'
+import PageHeader from '../components/ui/PageHeader'
+import ProgressBar from '../components/ui/ProgressBar'
+import QueryState from '../components/ui/QueryState'
+import StatCard from '../components/ui/StatCard'
+import Tag from '../components/ui/Tag'
+import { api } from '../lib/api'
+import { currentMonth, diasHasta, fmt, fmtCorto, formatFechaCorta, monthLabel } from '../lib/format'
 import { QK } from '../lib/queryKeys'
 
-export default function Dashboard() {
-  const { state, refetchAll } = usePhase1()
-  const inboxGoogle = useGoogleStore((s) => s.inboxPreview)
-  const googleTokenVersion = useGoogleStore((s) => s.tokenVersion)
-  const cur = state.config.moneda
-
-  const now = useMemo(() => new Date(), [])
-  const monthAnchor = useMemo(() => {
-    const d = new Date()
-    return { y: d.getFullYear(), m: d.getMonth() }
-  }, [])
-
-  const googleDashQ = useQuery({
-    queryKey: [...QK.googleCal(monthAnchor.y, monthAnchor.m), googleTokenVersion],
-    queryFn: () => listPrimaryMonthEvents({ year: monthAnchor.y, month: monthAnchor.m }),
-    enabled: isSignedIn(),
-    staleTime: 60_000,
-  })
-  const mes = now.toISOString().slice(0, 7)
-
-  const { ing, eg, bal, srvTotal, chartHtml, movimientosHtml, eventsHtml, emailsHtml } = useMemo(() => {
-    const googleMonthEvents = googleDashQ.data ?? []
-    const txsMes = state.transacciones.filter((t) => t.fecha.startsWith(mes))
-    const ingV = txsMes.filter((t) => t.tipo === 'ingreso').reduce((s, t) => s + t.monto, 0)
-    const egV = txsMes.filter((t) => t.tipo === 'egreso').reduce((s, t) => s + t.monto, 0)
-    const balV = ingV - egV
-
-    const srvTotalV = state.servicios.reduce((acc, s) => acc + monthlyEquivalentMonto(s.monto, s.periodo), 0)
-
-    const months = []
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      months.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('es', { month: 'short' }) })
-    }
-    const maxVal = Math.max(
-      ...months.map((m) => {
-        const txs = state.transacciones.filter((t) => t.fecha.startsWith(m.key))
-        return Math.max(
-          txs.filter((t) => t.tipo === 'ingreso').reduce((s, t) => s + t.monto, 0),
-          txs.filter((t) => t.tipo === 'egreso').reduce((s, t) => s + t.monto, 0),
-        )
-      }),
-      1,
+function Proximos({ items }) {
+  if (!items.length) return <div className="empty">Nada por vencer en los próximos 15 días.</div>
+  return items.map((i) => {
+    const dias = diasHasta(i.fecha)
+    return (
+      <div key={`${i.tipo}-${i.id}`} className="list-row">
+        <div className="list-row-main">
+          <div className="list-row-title">
+            {i.tipo === 'cobro' ? '💵' : '🔁'} {i.titulo}
+          </div>
+          <div className="list-row-sub">{i.detalle}</div>
+        </div>
+        <div className="list-row-side">
+          <div className="mono">{fmt(i.monto)}</div>
+          <Tag color={i.vencido ? 'red' : dias <= 3 ? 'yellow' : ''}>
+            {i.vencido ? `Venció hace ${Math.abs(dias)} d` : dias === 0 ? 'Hoy' : `${formatFechaCorta(i.fecha)}`}
+          </Tag>
+        </div>
+      </div>
     )
+  })
+}
 
-    const chart = months
-      .map((m) => {
-        const txs = state.transacciones.filter((t) => t.fecha.startsWith(m.key))
-        const mi = txs.filter((t) => t.tipo === 'ingreso').reduce((s, t) => s + t.monto, 0)
-        const me = txs.filter((t) => t.tipo === 'egreso').reduce((s, t) => s + t.monto, 0)
-        return `<div class="chart-bar-col"><div class="chart-bar" style="height:${((mi / maxVal) * 100).toFixed(0)}px;background:var(--accent);opacity:0.8;"></div><div class="chart-bar" style="height:${((me / maxVal) * 100).toFixed(0)}px;background:var(--accent3);opacity:0.8;"></div><div class="chart-bar-label">${m.label}</div></div>`
-      })
-      .join('')
-
-    const last5 = state.transacciones.slice(0, 5)
-    const mov =
-      last5.length > 0
-        ? last5
-            .map(
-              (t) =>
-                `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);"><div><div style="font-size:14px;font-weight:500;color:var(--text);">${t.desc}</div><div style="font-size:11px;color:var(--text-dim);">${t.fecha} · ${t.cat}</div></div><div style="font-family:var(--font-mono);font-weight:600;color:${t.tipo === 'ingreso' ? 'var(--accent)' : 'var(--accent3)'};">${t.tipo === 'ingreso' ? '+' : '-'}${fmt(t.monto, cur)}</div></div>`,
-            )
-            .join('')
-        : '<div style="color:var(--text-muted);font-size:13px;padding:20px 0;text-align:center;">Sin movimientos</div>'
-
-    const evParts = [
-      ...state.calClientes.slice(0, 3).map(
-        (c) =>
-          `<div class="cal-event" style="margin-bottom:6px;"><div class="cal-dot" style="background:${c.color};"></div><div style="font-size:13px;"><strong style="color:var(--text);">${c.titulo}</strong> <span style="color:var(--text-dim);">— día ${c.diaMes}</span></div></div>`,
-      ),
-      ...state.calEventos.slice(0, 2).map(
-        (e) =>
-          `<div class="cal-event" style="margin-bottom:6px;"><div class="cal-dot" style="background:${e.color};"></div><div style="font-size:13px;">${e.titulo}</div></div>`,
-      ),
-      ...googleMonthEvents.slice(0, 2).map((e) => {
-        const cal = e.calendario ? ` <span style="color:var(--text-dim)">· ${String(e.calendario).replace(/</g, '')}</span>` : ''
-        return `<div class="cal-event" style="margin-bottom:6px;"><div class="cal-dot" style="background:#4fc3f7;"></div><div style="font-size:13px;"><span style="color:var(--text-dim);font-size:10px;text-transform:uppercase;">Google</span> ${e.titulo}${cal}</div></div>`
-      }),
-    ]
-    let ev = evParts.join('')
-    if (!ev) {
-      ev =
-        '<div style="color:var(--text-muted);font-size:13px;padding:20px 0;text-align:center;">Añadí eventos en Calendario o cargá Google desde esa página.</div>'
-    }
-
-    const prevEmails = inboxGoogle.length > 0 ? inboxGoogle.slice(0, 3) : (state.gmailPreview?.slice(0, 3) ?? [])
-    const em =
-      prevEmails.length > 0
-        ? prevEmails
-            .map((e) => {
-              const fromLine = inboxGoogle.length > 0 ? parseFrom(e.from || '') : e.from?.split('<')[0]?.replace(/"/g, '')?.trim() || ''
-              return `<div style="padding:10px 0;border-bottom:1px solid var(--border);"><div style="font-size:13px;font-weight:${e.unread ? '600' : '400'};color:${e.unread ? 'var(--text)' : 'var(--text-muted)'};">${e.subject || '(Sin asunto)'}</div><div style="font-size:11px;color:var(--text-dim);">${fromLine}</div></div>`
-            })
-            .join('')
-        : '<div style="color:var(--text-muted);font-size:13px;padding:20px 0;text-align:center;">Conectá Gmail y actualizá la bandeja en la página Gmail.</div>'
-
-    return {
-      ing: ingV,
-      eg: egV,
-      bal: balV,
-      srvTotal: srvTotalV,
-      chartHtml: chart,
-      movimientosHtml: mov,
-      eventsHtml: ev,
-      emailsHtml: em,
-    }
-  }, [state, mes, cur, now, inboxGoogle, googleDashQ.data])
-
-  const handleRefetch = async () => {
-    try {
-      await refetchAll()
-      notify('Datos actualizados')
-    } catch {
-      notify('Error al actualizar')
-    }
-  }
+export default function Dashboard() {
+  const [mes, setMes] = useState(currentMonth)
+  const navigate = useNavigate()
+  const q = useQuery({ queryKey: QK.dashboard(mes), queryFn: () => api.get('dashboard/', { params: { mes } }).then((r) => r.data) })
 
   return (
-    <div className="page active" id="page-dashboard">
-      <div className="section-header">
-        <div>
-          <h2>Bienvenido de vuelta 👋</h2>
-          <p>Resumen de tu situación financiera</p>
-        </div>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={handleRefetch}>
-          🔄 Actualizar
-        </button>
-      </div>
-      <div className="grid-4" style={{ marginBottom: '24px' }}>
-        <div className="stat-card green">
-          <div className="stat-label">Ingresos del mes</div>
-          <div className="stat-value" id="dash-ingresos">
-            {fmt(ing, cur)}
-          </div>
-          <div className="stat-sub up" id="dash-ing-pct">
-            ↑ 0%
-          </div>
-        </div>
-        <div className="stat-card red">
-          <div className="stat-label">Egresos del mes</div>
-          <div className="stat-value" id="dash-egresos">
-            {fmt(eg, cur)}
-          </div>
-          <div className="stat-sub down">↓ 0%</div>
-        </div>
-        <div className="stat-card purple">
-          <div className="stat-label">Balance neto</div>
-          <div className="stat-value" id="dash-balance" style={{ color: bal >= 0 ? 'var(--accent)' : 'var(--accent3)' }}>
-            {fmt(Math.abs(bal), cur)}
-          </div>
-          <div className="stat-sub" id="dash-bal-note" style={{ color: 'var(--text-muted)' }}>
-            {bal >= 0 ? '✓ Positivo' : '⚠️ Negativo'}
-          </div>
-        </div>
-        <div className="stat-card gold">
-          <div className="stat-label">Servicios (total mensual)</div>
-          <div className="stat-value" id="dash-servicios">
-            {fmt(srvTotal, cur)}
-          </div>
-          <div className="stat-sub" style={{ color: 'var(--text-muted)' }}>
-            Equivalente mensual de todos los montos
-          </div>
-        </div>
-      </div>
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-title">
-            <span className="dot" />
-            Flujo mensual
-          </div>
-          <div className="chart-bar-wrap" id="dash-chart" dangerouslySetInnerHTML={{ __html: chartHtml }} />
-        </div>
-        <div className="card">
-          <div className="card-title">
-            <span className="dot" style={{ background: 'var(--accent2)' }} />
-            Próximos eventos
-          </div>
-          <div id="dash-events" dangerouslySetInnerHTML={{ __html: eventsHtml }} />
-        </div>
-      </div>
-      <div className="grid-2">
-        <div className="card">
-          <div className="card-title">
-            <span className="dot" style={{ background: 'var(--gold)' }} />
-            Últimos movimientos
-          </div>
-          <div id="dash-movimientos" dangerouslySetInnerHTML={{ __html: movimientosHtml }} />
-        </div>
-        <div className="card">
-          <div className="card-title">
-            <span className="dot" style={{ background: 'var(--accent3)' }} />
-            Correos recientes
-          </div>
-          <div id="dash-emails" dangerouslySetInnerHTML={{ __html: emailsHtml }} />
-        </div>
-      </div>
-    </div>
+    <>
+      <PageHeader titulo="Dashboard" subtitulo={`Resumen de la agencia — ${monthLabel(mes)}`}>
+        <MonthPicker value={mes} onChange={setMes} />
+      </PageHeader>
+      <QueryState query={q}>
+        {(d) => (
+          <>
+            <div className="grid-4">
+              <StatCard label="Ingresos del mes" value={fmtCorto(d.ingresos_mes)} color="green" variacion={d.variacion.ingresos} onClick={() => navigate(`/movimientos?mes=${mes}&tipo=ingreso`)} />
+              <StatCard label="Egresos del mes" value={fmtCorto(d.egresos_mes)} color="red" variacion={d.variacion.egresos} invertir onClick={() => navigate(`/movimientos?mes=${mes}&tipo=egreso`)} />
+              <StatCard
+                label="Resultado"
+                value={<span className={Number(d.balance) >= 0 ? 'up' : 'down'}>{fmtCorto(d.balance)}</span>}
+                color="purple"
+                sub={d.margen_pct !== null ? `Margen ${d.margen_pct}%` : null}
+              />
+              <StatCard label="Ingreso recurrente (MRR)" value={fmtCorto(d.mrr)} color="gold" sub={`${d.clientes_activos} clientes activos`} onClick={() => navigate('/clientes')} />
+            </div>
+
+            <div className="grid-3" style={{ marginTop: 16 }}>
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" /> Cobranza del mes
+                </div>
+                <div className="kpi-line">
+                  <span>Facturado</span>
+                  <strong className="mono">{fmt(d.cobros_mes.facturado)}</strong>
+                </div>
+                <div className="kpi-line">
+                  <span>Cobrado</span>
+                  <strong className="mono up">{fmt(d.cobros_mes.cobrado)}</strong>
+                </div>
+                <div className="kpi-line">
+                  <span>Falta cobrar</span>
+                  <strong className="mono">{fmt(d.cobros_mes.pendiente)}</strong>
+                </div>
+                <ProgressBar valor={d.cobros_mes.pct_cobrado ?? 0} etiqueta="Porcentaje cobrado" />
+                <div className="muted small" style={{ marginTop: 6 }}>
+                  {d.cobros_mes.pct_cobrado !== null ? `${d.cobros_mes.pct_cobrado}% cobrado` : 'Todavía no hay cobros generados este mes.'}{' '}
+                  <Link to={`/cobros?mes=${mes}`}>Ver cobros</Link>
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" style={{ background: 'var(--accent3)' }} /> Deuda vencida
+                </div>
+                <div className="stat-value down" style={{ marginBottom: 10 }}>
+                  {fmtCorto(d.deuda_vencida)}
+                </div>
+                {d.top_deudores.length === 0 ? (
+                  <div className="empty">Ningún cliente con pagos vencidos. 🎉</div>
+                ) : (
+                  d.top_deudores.map((t) => (
+                    <Link key={t.cliente} to={`/clientes/${t.cliente}`} className="list-row list-row--link">
+                      <div className="list-row-main">
+                        <div className="list-row-title">{t.nombre}</div>
+                        <div className="list-row-sub">
+                          {t.cobros} cobro{t.cobros === 1 ? '' : 's'} · hace {t.dias} días
+                        </div>
+                      </div>
+                      <div className="mono down">{fmt(t.deuda)}</div>
+                    </Link>
+                  ))
+                )}
+              </div>
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" style={{ background: 'var(--accent2)' }} /> Costos fijos
+                </div>
+                <div className="kpi-line">
+                  <span>Equipo este mes</span>
+                  <strong className="mono">{fmt(d.equipo.costo_mes)}</strong>
+                </div>
+                <div className="kpi-line">
+                  <span>Pendiente de pagar al equipo</span>
+                  <strong className="mono">{fmt(d.equipo.pendiente_pago)}</strong>
+                </div>
+                <div className="kpi-line">
+                  <span>Suscripciones / mes</span>
+                  <strong className="mono">{fmt(d.suscripciones_mensual)}</strong>
+                </div>
+                <div className="kpi-line">
+                  <span>Tareas abiertas</span>
+                  <strong>
+                    {d.tareas.abiertas}
+                    {d.tareas.vencidas ? <span className="down"> ({d.tareas.vencidas} vencidas)</span> : null}
+                  </strong>
+                </div>
+                <div className="muted small" style={{ marginTop: 6 }}>
+                  <Link to="/pagos-equipo">Pagos al equipo</Link> · <Link to="/suscripciones">Suscripciones</Link> · <Link to="/tareas">Tareas</Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid-2">
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" /> Últimos 6 meses
+                </div>
+                <BarChart
+                  data={d.series_6_meses.map((s) => ({
+                    label: s.label,
+                    valores: [
+                      { nombre: 'Ingresos', valor: Number(s.ingreso), color: 'var(--accent)' },
+                      { nombre: 'Egresos', valor: Number(s.egreso), color: 'var(--accent3)' },
+                    ],
+                  }))}
+                />
+              </div>
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" style={{ background: 'var(--gold)' }} /> Próximos vencimientos
+                </div>
+                <Proximos items={d.proximos_vencimientos} />
+              </div>
+            </div>
+
+            <div className="grid-2">
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" style={{ background: 'var(--accent2)' }} /> Rentabilidad por cliente
+                </div>
+                {d.rentabilidad.length === 0 ? (
+                  <div className="empty">Sin movimientos asociados a clientes este mes.</div>
+                ) : (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th className="num">Cobrado</th>
+                        <th className="num">Costo</th>
+                        <th className="num">Margen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...d.rentabilidad, ...d.rentabilidad_peor.filter((p) => !d.rentabilidad.some((r) => r.cliente === p.cliente))].map((r) => (
+                        <tr key={r.cliente}>
+                          <td>
+                            <Link to={`/clientes/${r.cliente}`}>{r.cliente_nombre}</Link>
+                          </td>
+                          <td className="num mono">{fmtCorto(r.ingresos)}</td>
+                          <td className="num mono">{fmtCorto(r.costo_total)}</td>
+                          <td className={`num mono ${Number(r.margen) >= 0 ? 'up' : 'down'}`}>
+                            {fmtCorto(r.margen)}
+                            {r.margen_pct !== null ? <span className="muted small"> ({r.margen_pct}%)</span> : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="card">
+                <div className="card-title">
+                  <span className="dot" /> Últimos movimientos
+                </div>
+                {d.ultimas_transacciones.length === 0 ? (
+                  <div className="empty">Sin movimientos registrados.</div>
+                ) : (
+                  d.ultimas_transacciones.map((t) => (
+                    <div key={t.id} className="list-row">
+                      <div className="list-row-main">
+                        <div className="list-row-title">{t.descripcion}</div>
+                        <div className="list-row-sub">
+                          {formatFechaCorta(t.fecha)} · {t.categoria_nombre}
+                          {t.cliente_nombre ? ` · ${t.cliente_nombre}` : ''}
+                        </div>
+                      </div>
+                      <div className={`mono ${t.tipo === 'ingreso' ? 'up' : 'down'}`}>
+                        {t.tipo === 'ingreso' ? '+' : '−'}
+                        {fmt(t.monto)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </QueryState>
+    </>
   )
 }

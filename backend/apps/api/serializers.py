@@ -9,7 +9,9 @@ class UserConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'moneda',
+            'first_name',
+            'last_name',
+            'email',
             'nombre_display',
             'google_api_key',
             'google_client_id',

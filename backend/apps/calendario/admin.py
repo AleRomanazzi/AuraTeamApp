@@ -1,13 +1,8 @@
 from django.contrib import admin
 
-from .models import ClienteMensual, EventoUnico
-
-
-@admin.register(ClienteMensual)
-class ClienteMensualAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'dia_mes', 'user')
+from .models import EventoUnico
 
 
 @admin.register(EventoUnico)
 class EventoUnicoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'inicio', 'user')
+    list_display = ('nombre', 'inicio', 'cliente', 'user')

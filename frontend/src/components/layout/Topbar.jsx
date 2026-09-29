@@ -1,69 +1,45 @@
-import { useMemo } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { usePhase1 } from '../../context/Phase1Context'
-import { useAuthStore } from '../../store/authStore'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { isSignedIn } from '../../features/google/gapiClient'
+import { useGoogleStore } from '../../features/google/googleStore'
+import { useMe } from '../../hooks/useData'
+import { cerrarSesion } from '../../lib/session'
 
-const titles = {
-  '/': 'Dashboard',
-  '/ingresos': 'Ingresos & Egresos',
-  '/servicios': 'División de Servicios',
-  '/personal': 'Equipo',
-  '/perfiles': 'Perfiles & Tareas',
-  '/gmail': 'Gmail',
-  '/calendar': 'Calendario',
-  '/estadisticas': 'Estadísticas',
-  '/config': 'Configuración',
-}
+const hoy = new Date().toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
 
 export default function Topbar({ onToggleSidebar }) {
-  const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { state } = usePhase1()
-  const clearAuth = useAuthStore((s) => s.clearAuth)
+  const qc = useQueryClient()
+  const { data: me } = useMe()
+  const [saliendo, setSaliendo] = useState(false)
+  useGoogleStore((s) => s.tokenVersion)
+  const googleActivo = Boolean(me?.google_connected) && isSignedIn()
 
-  const title = titles[pathname] ?? 'Aura Team'
-
-  const dateBadge = useMemo(() => {
-    const now = new Date()
-    return now.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
-  }, [])
-
-  const googleLine =
-    state.googleConnected === true
-      ? { text: '🟢 Google conectado', color: 'var(--accent)' }
-      : { text: '⚪ Google desconectado', color: 'var(--text-dim)' }
+  const salir = async () => {
+    setSaliendo(true)
+    await cerrarSesion(qc)
+    navigate('/login', { replace: true })
+  }
 
   return (
-    <div className="topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div className="hamburger" onClick={onToggleSidebar} onKeyDown={(e) => e.key === 'Enter' && onToggleSidebar()} role="button" tabIndex={0}>
-          <span />
-          <span />
-          <span />
-        </div>
-        <span className="topbar-title" id="topbar-title">
-          {title}
-        </span>
-      </div>
+    <header className="topbar">
+      <button type="button" className="hamburger" aria-label="Abrir menú" onClick={onToggleSidebar}>
+        <span />
+        <span />
+        <span />
+      </button>
       <div className="topbar-right">
-        <span className="badge" id="date-badge">
-          {dateBadge}
-        </span>
-        <span id="google-status" style={{ fontSize: '13px', color: googleLine.color }}>
-          {googleLine.text}
-        </span>
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          style={{ marginLeft: 8 }}
-          onClick={() => {
-            clearAuth()
-            navigate('/login', { replace: true })
-          }}
-        >
-          Salir
+        <span className="badge">{hoy}</span>
+        {me?.google_connected ? (
+          <span className="topbar-google" style={{ color: googleActivo ? 'var(--accent)' : 'var(--text-dim)' }}>
+            {googleActivo ? '● Google conectado' : '○ Google sin sesión'}
+          </span>
+        ) : null}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={salir} disabled={saliendo}>
+          {saliendo ? 'Saliendo…' : 'Salir'}
         </button>
       </div>
-    </div>
+    </header>
   )
 }

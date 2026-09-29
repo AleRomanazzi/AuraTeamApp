@@ -1,84 +1,82 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { usePhase1 } from '../../context/Phase1Context'
 import { initGapiClientAndSignIn } from '../../features/google/gapiClient'
+import { useMe } from '../../hooks/useData'
 import { api } from '../../lib/api'
 import { QK } from '../../lib/queryKeys'
 import { notify } from '../../lib/notify'
-import AppModals from '../modals/AppModals'
+import ConfirmDialog from '../ui/ConfirmDialog'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 
-export default function PageShell() {
-  const { isBootstrapping, state } = usePhase1()
+/** Conecta Google al entrar (si el usuario lo había conectado antes) sin pasar por Configuración. */
+function useGoogleAutoConnect(me) {
   const qc = useQueryClient()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-
   useEffect(() => {
-    if (isBootstrapping || typeof window === 'undefined') return
-    if (sessionStorage.getItem('aura_post_login_google') !== '1') return
-    sessionStorage.removeItem('aura_post_login_google')
-
-    const cid = state.config.clientId?.trim()
-    if (!cid) {
-      notify('Google OAuth: falta Client ID en el servidor (variable AURA_GOOGLE_CLIENT_ID).')
-      return
-    }
-
-    const hint = state.config.googleLoginHint?.trim()
+    if (!me) return undefined
+    const clientId = (me.google_client_id || '').trim()
+    const recienLogueado = sessionStorage.getItem('aura_post_login_google') === '1'
+    if (recienLogueado) sessionStorage.removeItem('aura_post_login_google')
+    if (!clientId || (!me.google_connected && !recienLogueado)) return undefined
+    let cancelado = false
+    const hint = (me.google_login_hint || '').trim() || undefined
     ;(async () => {
       try {
         await initGapiClientAndSignIn(
-          { apiKey: state.config.apiKey?.trim() || '', clientId: cid },
-          { prompt: 'select_account', hint: hint || undefined },
+          { apiKey: (me.google_api_key || '').trim(), clientId },
+          { prompt: me.google_connected ? '' : 'select_account', hint },
         )
-        await api.put('me/config/', { google_connected: true })
-        await qc.invalidateQueries({ queryKey: QK.me })
+        if (cancelado) return
+        if (!me.google_connected) {
+          await api.put('me/config/', { google_connected: true })
+          await qc.invalidateQueries({ queryKey: QK.me })
+          notify('Cuenta de Google conectada')
+        }
         await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'google-calendar' })
-        notify('Cuenta Google conectada')
-      } catch (e) {
-        notify(e?.message || 'No se pudo conectar Google. Podés reintentar desde Configuración.')
+      } catch {
+        /* Sin sesión de Google en el navegador: se puede conectar desde Configuración. */
       }
     })()
-  }, [isBootstrapping, state.config.clientId, state.config.apiKey, state.config.googleLoginHint, qc])
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo interesa reintentar cuando cambian los datos de Google
+  }, [me?.id, me?.google_connected, me?.google_client_id])
+}
+
+export default function PageShell() {
+  const meQ = useMe()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  useGoogleAutoConnect(meQ.data)
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), [])
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
   return (
     <>
-      <div
-        id="sidebar-overlay"
-        className={sidebarOpen ? 'open' : ''}
-        onClick={closeSidebar}
-        onKeyDown={(e) => e.key === 'Escape' && closeSidebar()}
-        role="presentation"
-        aria-hidden="true"
-      />
+      <div id="sidebar-overlay" className={sidebarOpen ? 'open' : ''} onClick={closeSidebar} role="presentation" aria-hidden="true" />
       <Sidebar sidebarOpen={sidebarOpen} onClose={closeSidebar} />
-      <div id="main" style={{ position: 'relative' }}>
-        {isBootstrapping ? (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              zIndex: 50,
-              background: 'rgba(12,15,20,0.65)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text)',
-              fontSize: 15,
-            }}
-          >
-            Cargando datos…
-          </div>
-        ) : null}
+      <div id="main">
         <Topbar onToggleSidebar={toggleSidebar} />
-        <Outlet context={{ closeSidebar }} />
+        <main className="page active">
+          {meQ.isPending ? (
+            <div className="state-box">Cargando…</div>
+          ) : meQ.isError ? (
+            <div className="state-box state-box--error">
+              No se pudo cargar tu sesión.
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => meQ.refetch()}>
+                Reintentar
+              </button>
+            </div>
+          ) : (
+            <Suspense fallback={<div className="state-box">Cargando…</div>}>
+              <Outlet />
+            </Suspense>
+          )}
+        </main>
       </div>
-      <AppModals />
+      <ConfirmDialog />
     </>
   )
 }

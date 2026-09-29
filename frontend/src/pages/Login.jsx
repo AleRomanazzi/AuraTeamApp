@@ -1,69 +1,69 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import AURA_LOGO from '../assets/auraLogoSrc'
 import { api } from '../lib/api'
+import { apiErrorMessage } from '../lib/errors'
 import { useAuthStore } from '../store/authStore'
-import { notify } from '../lib/notify'
 
 export default function Login() {
   const access = useAuthStore((s) => s.access)
+  const setTokens = useAuthStore((s) => s.setTokens)
   const navigate = useNavigate()
-  useEffect(() => {
-    if (access) navigate('/', { replace: true })
-  }, [access, navigate])
+  const loc = useLocation()
+  const from = loc.state?.from || '/'
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const setTokens = useAuthStore((s) => s.setTokens)
-  const loc = useLocation()
-  const from = loc.state?.from || '/'
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (access) navigate(from, { replace: true })
+  }, [access, from, navigate])
 
   const onSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
     try {
-      const { data } = await api.post('auth/login/', { username, password })
-      setTokens(data.access, data.refresh)
+      const { data } = await api.post('auth/login/', { username: username.trim(), password })
       try {
         sessionStorage.setItem('aura_post_login_google', '1')
       } catch {
         /* ignore */
       }
-      notify('Sesión iniciada')
-      navigate(from, { replace: true })
-    } catch {
-      notify('Usuario o contraseña incorrectos')
+      setTokens(data.access, data.refresh)
+    } catch (err) {
+      const status = err.response?.status
+      setError(status === 401 || status === 400 ? 'Usuario o contraseña incorrectos.' : apiErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="page active" style={{ maxWidth: 420, margin: '48px auto', padding: '0 16px' }}>
-      <div className="card" style={{ padding: 28 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
-          <img
-            src={AURA_LOGO}
-            alt="Aura Team"
-            className="logo-img"
-            style={{ width: 56, height: 56, marginBottom: 12 }}
-          />
-          <h2 style={{ marginBottom: 8, textAlign: 'center' }}>Iniciar sesión</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, textAlign: 'center' }}>
-            Aura Team — Centro de Control
-          </p>
+    <div className="login-wrap">
+      <div className="card login-card">
+        <div className="login-head">
+          <img src={AURA_LOGO} alt="" className="logo-img" style={{ width: 56, height: 56 }} />
+          <h2>Iniciar sesión</h2>
+          <p>Aura Team — Centro de Control</p>
         </div>
         <form onSubmit={onSubmit}>
           <div className="form-row">
-            <label>Usuario</label>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+            <label htmlFor="login-user">Usuario</label>
+            <input id="login-user" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoFocus />
           </div>
           <div className="form-row">
-            <label>Contraseña</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+            <label htmlFor="login-pass">Contraseña</label>
+            <input id="login-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
           </div>
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
+          {error ? (
+            <div className="alert alert-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} disabled={loading}>
             {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </form>

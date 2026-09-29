@@ -43,16 +43,34 @@ function decodeB64Url(data) {
   }
 }
 
+/** Convierte HTML a texto plano sin ejecutarlo ni insertarlo en el DOM de la app. */
+function htmlATexto(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  doc.querySelectorAll('script, style, head').forEach((n) => n.remove())
+  doc.querySelectorAll('br').forEach((n) => n.replaceWith('\n'))
+  doc.querySelectorAll('p, div, tr, li, h1, h2, h3, h4').forEach((n) => n.append('\n'))
+  return (doc.body?.textContent || '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function buscarParte(payload, mime) {
+  if (!payload) return null
+  if (payload.mimeType === mime && payload.body?.data) return payload.body.data
+  for (const p of payload.parts || []) {
+    const r = buscarParte(p, mime)
+    if (r) return r
+  }
+  return null
+}
+
 export function extractPlainBodyFromPayload(payload) {
   if (!payload) return '(Sin cuerpo)'
-  if (payload.body?.data) return decodeB64Url(payload.body.data)
-  if (payload.parts) {
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) return decodeB64Url(part.body.data)
-    }
-    for (const part of payload.parts) {
-      if (part.mimeType === 'text/html' && part.body?.data) return decodeB64Url(part.body.data)
-    }
+  const plano = buscarParte(payload, 'text/plain')
+  if (plano) return decodeB64Url(plano)
+  const html = buscarParte(payload, 'text/html')
+  if (html) return htmlATexto(decodeB64Url(html))
+  if (payload.body?.data) {
+    const s = decodeB64Url(payload.body.data)
+    return /<[a-z][\s\S]*>/i.test(s) ? htmlATexto(s) : s
   }
   return '(No se puede mostrar el cuerpo del correo)'
 }
@@ -81,10 +99,12 @@ function subjectRfc2047Utf8(s) {
   return `=?UTF-8?B?${b64}?=`
 }
 
+const sinSaltos = (s) => String(s || '').replace(/[\r\n]+/g, ' ').trim()
+
 export async function sendMessage({ to, subject, body }) {
   const lines = [
-    `To: ${to}`,
-    `Subject: ${subjectRfc2047Utf8(subject)}`,
+    `To: ${sinSaltos(to)}`,
+    `Subject: ${subjectRfc2047Utf8(sinSaltos(subject))}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: base64',

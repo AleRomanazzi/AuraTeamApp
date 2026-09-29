@@ -1,160 +1,161 @@
-import { useCallback, useState } from 'react'
-import { useModal } from '../context/ModalContext'
-import { usePhase1 } from '../context/Phase1Context'
-import { listInboxMessages, getMessageFull } from '../features/google/gmailApi'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import Field from '../components/ui/Field'
+import Modal from '../components/ui/Modal'
+import PageHeader from '../components/ui/PageHeader'
 import { isSignedIn } from '../features/google/gapiClient'
+import { getMessageFull, listInboxMessages, sendMessage } from '../features/google/gmailApi'
 import { useGoogleStore } from '../features/google/googleStore'
-import { formatDate, parseFrom } from '../lib/format'
+import { useClientes } from '../hooks/useData'
+import { COLORES } from '../lib/constants'
+import { formatFechaHora, parseFrom } from '../lib/format'
 import { notify } from '../lib/notify'
 
-export default function Gmail() {
-  const { state } = usePhase1()
-  const { openModal } = useModal()
-  const [q, setQ] = useState('')
-  const [selected, setSelected] = useState(null)
-  const [detail, setDetail] = useState(null)
-  const [loadingList, setLoadingList] = useState(false)
-  const [loadingDetail, setLoadingDetail] = useState(false)
+const errorGoogle = (e, fallback) => e?.result?.error?.message || e?.message || fallback
 
-  const inboxGoogle = useGoogleStore((s) => s.inboxPreview)
-  const setInboxPreview = useGoogleStore((s) => s.setInboxPreview)
-
-  const emails =
-    inboxGoogle.length > 0 ? inboxGoogle : state.googleConnected ? [] : state.gmailPreview || []
-
-  const filtered = emails.filter((e) => {
-    if (!q.trim()) return true
-    const s = q.toLowerCase()
-    return (
-      (e.subject || '').toLowerCase().includes(s) ||
-      (e.snippet || '').toLowerCase().includes(s) ||
-      (e.from || '').toLowerCase().includes(s)
-    )
+function Redactar({ inicial, onClose }) {
+  const { data: clientes = [] } = useClientes()
+  const [f, setF] = useState({ to: inicial?.to ?? '', subject: inicial?.subject ?? '', body: inicial?.body ?? '' })
+  const conEmail = clientes.filter((c) => c.email)
+  const enviar = useMutation({
+    mutationFn: () => sendMessage(f),
+    onSuccess: () => {
+      notify('Correo enviado')
+      onClose()
+    },
+    onError: (e) => notify(errorGoogle(e, 'No se pudo enviar'), 'error'),
   })
+  return (
+    <Modal
+      title="Redactar correo"
+      onClose={onClose}
+      size="lg"
+      onSubmit={() => enviar.mutate()}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={enviar.isPending}>
+            {enviar.isPending ? 'Enviando…' : 'Enviar'}
+          </button>
+        </>
+      }
+    >
+      {conEmail.length ? (
+        <Field label="Enviar a un cliente">
+          <select value="" onChange={(e) => e.target.value && setF((s) => ({ ...s, to: e.target.value }))}>
+            <option value="">Elegir…</option>
+            {conEmail.map((c) => (
+              <option key={c.id} value={c.email}>
+                {c.nombre} — {c.email}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      <Field label="Para">
+        <input type="email" multiple value={f.to} onChange={(e) => setF((s) => ({ ...s, to: e.target.value }))} required />
+      </Field>
+      <Field label="Asunto">
+        <input value={f.subject} onChange={(e) => setF((s) => ({ ...s, subject: e.target.value }))} required maxLength={200} />
+      </Field>
+      <Field label="Mensaje">
+        <textarea rows={10} value={f.body} onChange={(e) => setF((s) => ({ ...s, body: e.target.value }))} required />
+      </Field>
+    </Modal>
+  )
+}
 
-  const colors = ['#4fffb0', '#7c6fff', '#ff6b6b', '#ffd166', '#4fc3f7', '#f06292']
+export default function Gmail() {
+  const tokenVersion = useGoogleStore((s) => s.tokenVersion)
+  const conectado = isSignedIn()
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [redactando, setRedactando] = useState(null)
 
-  const loadGmail = useCallback(async () => {
-    if (!isSignedIn()) {
-      notify('Conectá Google primero (Configuración)')
-      return
-    }
-    setLoadingList(true)
-    try {
-      const list = await listInboxMessages(20, 10)
-      setInboxPreview(list)
-      if (!list.length) notify('Bandeja vacía')
-      else notify('Correos actualizados')
-    } catch (e) {
-      notify(e.result?.error?.message || e.message || 'Error Gmail')
-    } finally {
-      setLoadingList(false)
-    }
-  }, [setInboxPreview])
+  const bandeja = useQuery({ queryKey: ['gmail', 'inbox', tokenVersion], queryFn: () => listInboxMessages(30, 20), enabled: conectado, staleTime: 60_000 })
+  const detalle = useQuery({ queryKey: ['gmail', 'msg', seleccionado?.id], queryFn: () => getMessageFull(seleccionado.id), enabled: conectado && Boolean(seleccionado) })
 
-  const openEmail = async (e) => {
-    setSelected(e)
-    setDetail(null)
-    if (!isSignedIn()) return
-    setLoadingDetail(true)
-    try {
-      const d = await getMessageFull(e.id)
-      setDetail(d)
-    } catch (err) {
-      notify(err.result?.error?.message || err.message || 'No se pudo cargar el correo')
-    } finally {
-      setLoadingDetail(false)
-    }
+  const filtrados = useMemo(() => {
+    const s = busqueda.trim().toLowerCase()
+    return (bandeja.data ?? []).filter((e) => !s || `${e.subject} ${e.snippet} ${e.from}`.toLowerCase().includes(s))
+  }, [bandeja.data, busqueda])
+
+  const responder = () => {
+    const d = detalle.data
+    if (!d) return
+    const email = /<([^>]+)>/.exec(d.from)?.[1] || d.from
+    setRedactando({ to: email, subject: d.subject.startsWith('Re:') ? d.subject : `Re: ${d.subject}`, body: `\n\n— El ${d.date}, ${parseFrom(d.from)} escribió:\n${d.body.split('\n').map((l) => `> ${l}`).join('\n')}` })
   }
 
   return (
-    <div className="page active" id="page-gmail">
-      <div className="section-header">
-        <div>
-          <h2>Gmail</h2>
-          <p>Tus correos conectados</p>
+    <>
+      <PageHeader titulo="Gmail" subtitulo="Bandeja de la cuenta de la agencia">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!conectado || bandeja.isFetching} onClick={() => bandeja.refetch()}>
+          {bandeja.isFetching ? 'Actualizando…' : '↻ Actualizar'}
+        </button>
+        <button type="button" className="btn btn-primary btn-sm" disabled={!conectado} onClick={() => setRedactando({})}>
+          ✉ Redactar
+        </button>
+      </PageHeader>
+      {!conectado ? (
+        <div className="info-box">
+          Google no está conectado. Andá a <Link to="/config">Configuración</Link> y tocá <strong>Conectar Google</strong>.
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button type="button" className="btn btn-secondary btn-sm" disabled={loadingList} onClick={loadGmail}>
-            {loadingList ? '⏳…' : '🔄 Actualizar'}
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => openModal('modal-email')}>
-            ✉️ Redactar
-          </button>
-        </div>
-      </div>
-      <div className="info-box">
-        <strong>📌 Para conectar Gmail:</strong> Ve a <strong>Configuración</strong>, guardá API Key y Client ID, y pulsá <strong>Conectar Google</strong>.
-      </div>
+      ) : null}
       <div className="grid-2">
         <div className="card">
-          <div className="card-title">
-            <span className="dot" />
-            Bandeja de entrada
-          </div>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <input type="text" id="gmail-search" placeholder="Buscar en correos..." style={{ flex: 1 }} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div id="gmail-list">
-            {filtered.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '20px 0', textAlign: 'center' }}>
-                {state.googleConnected ? 'Pulsá Actualizar para cargar INBOX' : 'Conecta Gmail para ver tus correos'}
-              </div>
-            ) : (
-              filtered.map((e, i) => (
-                <div
-                  key={e.id}
-                  className={`gmail-item ${e.unread ? 'unread' : ''}`}
-                  onClick={() => openEmail(e)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(ev) => ev.key === 'Enter' && openEmail(e)}
-                >
-                  <div className="gmail-avatar" style={{ background: `${colors[i % colors.length]}22`, color: colors[i % colors.length] }}>
-                    {parseFrom(e.from || '').charAt(0).toUpperCase()}
+          <input type="search" placeholder="Buscar en correos…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar correos" style={{ width: '100%', marginBottom: 12 }} />
+          {bandeja.isError ? (
+            <div className="state-box state-box--error">{errorGoogle(bandeja.error, 'No se pudo cargar Gmail')}</div>
+          ) : bandeja.isLoading ? (
+            <div className="state-box">Cargando…</div>
+          ) : filtrados.length === 0 ? (
+            <div className="empty">{conectado ? 'No hay correos.' : 'Conectá Google para ver los correos.'}</div>
+          ) : (
+            filtrados.map((e, i) => {
+              const color = COLORES[i % COLORES.length]
+              return (
+                <button key={e.id} type="button" className={`gmail-item${e.unread ? ' unread' : ''}${seleccionado?.id === e.id ? ' active' : ''}`} onClick={() => setSeleccionado(e)}>
+                  <div className="gmail-avatar" style={{ background: `${color}22`, color }}>
+                    {parseFrom(e.from).charAt(0).toUpperCase()}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '13px', fontWeight: e.unread ? 600 : 400, color: e.unread ? 'var(--text)' : 'var(--text-muted)' }}>{parseFrom(e.from || '')}</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>{formatDate(e.date)}</span>
+                  <div className="gmail-body">
+                    <div className="gmail-row">
+                      <span className="gmail-from">{parseFrom(e.from)}</span>
+                      <span className="small muted">{formatFechaHora(e.date)}</span>
                     </div>
                     <div className="gmail-subject">{e.subject || '(Sin asunto)'}</div>
                     <div className="gmail-preview">{e.snippet}</div>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                </button>
+              )
+            })
+          )}
         </div>
         <div className="card">
-          <div className="card-title">
-            <span className="dot" style={{ background: 'var(--accent2)' }} />
-            Vista previa
-          </div>
-          <div id="email-detail" style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '20px 0', textAlign: 'center' }}>
-            {!selected ? (
-              'Selecciona un correo para leerlo'
-            ) : loadingDetail ? (
-              'Cargando…'
-            ) : detail ? (
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', marginBottom: '8px', color: 'var(--text)' }}>{detail.subject}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>De: {detail.from}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Fecha: {detail.date}</div>
-                </div>
-                <div style={{ fontSize: '14px', lineHeight: 1.7, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: '16px', whiteSpace: 'pre-wrap', maxHeight: 420, overflowY: 'auto' }}>{detail.body}</div>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', marginBottom: '8px', color: 'var(--text)' }}>{selected.subject || '(Sin asunto)'}</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>De: {selected.from}</div>
-                <div style={{ fontSize: '14px', marginTop: 12, color: 'var(--text-dim)' }}>{selected.snippet}</div>
-              </div>
-            )}
-          </div>
+          {!seleccionado ? (
+            <div className="empty">Elegí un correo para leerlo.</div>
+          ) : detalle.isLoading ? (
+            <div className="state-box">Cargando…</div>
+          ) : detalle.isError ? (
+            <div className="state-box state-box--error">{errorGoogle(detalle.error, 'No se pudo cargar el correo')}</div>
+          ) : detalle.data ? (
+            <div className="email-detail">
+              <h3>{detalle.data.subject}</h3>
+              <div className="small muted">De: {detalle.data.from}</div>
+              <div className="small muted">Fecha: {detalle.data.date}</div>
+              <div className="email-body">{detalle.data.body}</div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={responder}>
+                ↩ Responder
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-    </div>
+      {redactando ? <Redactar inicial={redactando} onClose={() => setRedactando(null)} /> : null}
+    </>
   )
 }

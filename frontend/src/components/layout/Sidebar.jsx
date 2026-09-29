@@ -1,40 +1,62 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import AURA_LOGO from '../../assets/auraLogoSrc'
+import { useMe } from '../../hooks/useData'
 
-const nav = [
-  { section: 'Principal', items: [{ to: '/', page: 'dashboard', icon: '📊', label: 'Dashboard' }] },
+const NAV_ADMIN = [
+  { section: 'Principal', items: [{ to: '/', icon: '📊', label: 'Dashboard' }] },
   {
-    section: 'Finanzas',
+    section: 'Clientes',
     items: [
-      { to: '/ingresos', page: 'ingresos', icon: '💰', label: 'Ingresos & Egresos' },
-      { to: '/servicios', page: 'servicios', icon: '🔧', label: 'División de Servicios' },
+      { to: '/clientes', icon: '🏷️', label: 'Clientes' },
+      { to: '/cobros', icon: '💵', label: 'Cobros' },
     ],
   },
   {
-    section: 'Personal',
+    section: 'Finanzas',
     items: [
-      { to: '/personal', page: 'personal', icon: '👥', label: 'Equipo' },
-      { to: '/perfiles', page: 'perfil', icon: '🗂️', label: 'Perfiles & Tareas' },
+      { to: '/movimientos', icon: '💰', label: 'Movimientos' },
+      { to: '/suscripciones', icon: '🔁', label: 'Suscripciones' },
+    ],
+  },
+  {
+    section: 'Equipo',
+    items: [
+      { to: '/equipo', icon: '👥', label: 'Equipo' },
+      { to: '/pagos-equipo', icon: '🧾', label: 'Pagos al equipo' },
+      { to: '/tareas', icon: '✅', label: 'Tareas' },
     ],
   },
   {
     section: 'Productividad',
     items: [
-      { to: '/gmail', page: 'gmail', icon: '✉️', label: 'Gmail' },
-      { to: '/calendar', page: 'calendar', icon: '📅', label: 'Calendario' },
+      { to: '/calendario', icon: '📅', label: 'Calendario' },
+      { to: '/gmail', icon: '✉️', label: 'Gmail' },
+      { to: '/estadisticas', icon: '📈', label: 'Estadísticas' },
     ],
   },
-  { section: 'Análisis', items: [{ to: '/estadisticas', page: 'estadisticas', icon: '📈', label: 'Estadísticas' }] },
-  { section: 'Sistema', items: [{ to: '/config', page: 'config', icon: '⚙️', label: 'Configuración' }] },
+  { section: 'Sistema', items: [{ to: '/config', icon: '⚙️', label: 'Configuración' }] },
+]
+
+const NAV_EQUIPO = [
+  {
+    section: 'Mi trabajo',
+    items: [
+      { to: '/', icon: '🏠', label: 'Mi panel' },
+      { to: '/tareas', icon: '✅', label: 'Mis tareas' },
+      { to: '/calendario', icon: '📅', label: 'Calendario' },
+    ],
+  },
+  { section: 'Cuenta', items: [{ to: '/config', icon: '⚙️', label: 'Mi cuenta' }] },
 ]
 
 export default function Sidebar({ sidebarOpen, onClose }) {
-  const navigate = useNavigate()
+  const { data: me } = useMe()
+  const nav = me?.es_admin ? NAV_ADMIN : NAV_EQUIPO
 
   return (
-    <aside id="sidebar" className={sidebarOpen ? 'open' : ''}>
+    <aside id="sidebar" className={sidebarOpen ? 'open' : ''} aria-label="Navegación principal">
       <div className="logo">
-        <img className="logo-img" src={AURA_LOGO} alt="Aura Team" />
+        <img className="logo-img" src={AURA_LOGO} alt="" />
         <div className="logo-text">
           <h1>Aura Team</h1>
           <span>Centro de Control</span>
@@ -52,25 +74,23 @@ export default function Sidebar({ sidebarOpen, onClose }) {
                 className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
                 onClick={() => onClose?.()}
               >
-                <span className="icon">{item.icon}</span>
+                <span className="icon" aria-hidden>
+                  {item.icon}
+                </span>
                 {item.label}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
-      <div className="sidebar-footer">
-        <button
-          type="button"
-          className="config-btn"
-          onClick={() => {
-            navigate('/config')
-            onClose?.()
-          }}
-        >
-          🔑 Conectar Google APIs
-        </button>
-      </div>
+      {me ? (
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <strong>{me.persona_nombre || me.first_name || me.username}</strong>
+            <span>{me.es_admin ? 'Administrador' : 'Equipo'}</span>
+          </div>
+        </div>
+      ) : null}
     </aside>
   )
 }

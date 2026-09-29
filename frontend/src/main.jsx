@@ -9,7 +9,16 @@ import './styles/globals.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false },
+    queries: {
+      staleTime: 15_000,
+      refetchOnWindowFocus: false,
+      retry: (intentos, error) => {
+        const status = error?.response?.status
+        if (status && status >= 400 && status < 500) return false
+        return intentos < 1
+      },
+    },
+    mutations: { retry: false },
   },
 })
 
@@ -17,7 +26,7 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ style: { background: 'var(--surface, #1a1a24)', color: 'var(--text, #fff)', border: '1px solid var(--border, #333)' } }} />
     </QueryClientProvider>
   </StrictMode>,
 )

@@ -119,11 +119,11 @@ def analyze_screenshots(
     provider = (os.getenv('AI_PROVIDER') or '').strip().lower()
     api_key = (os.getenv('AI_API_KEY') or '').strip()
     if not api_key or provider not in ('openai', 'anthropic'):
-        return None, 'Configura AI_PROVIDER=openai|anthropic y AI_API_KEY en el servidor.', ''
+        return None, 'La IA no está configurada en el servidor.', ''
 
     model = (os.getenv('AI_MODEL') or '').strip()
     if not model:
-        model = 'gpt-4o-mini' if provider == 'openai' else 'claude-3-5-sonnet-20241022'
+        model = 'gpt-4o-mini' if provider == 'openai' else 'claude-sonnet-4-5'
 
     try:
         if provider == 'anthropic':
@@ -131,18 +131,19 @@ def analyze_screenshots(
         else:
             parsed = _call_openai(api_key, model, antes, despues)
     except httpx.HTTPStatusError as e:
-        logger.exception('IA HTTP error')
-        try:
-            detail = e.response.json()
-        except Exception:
-            detail = e.response.text
-        return None, f'Error del proveedor IA ({e.response.status_code}): {detail}', ''
-    except Exception as e:
+        logger.error('IA HTTP %s: %s', e.response.status_code, e.response.text[:500])
+        if e.response.status_code == 429:
+            return None, 'El servicio de IA está saturado. Probá de nuevo en unos minutos.', ''
+        return None, 'El servicio de IA devolvió un error. Probá de nuevo más tarde.', ''
+    except httpx.TimeoutException:
+        logger.warning('IA timeout')
+        return None, 'El análisis tardó demasiado. Probá con menos capturas.', ''
+    except Exception:
         logger.exception('IA error')
-        return None, f'Error al llamar a la IA: {e}', ''
+        return None, 'No se pudo completar el análisis. Probá de nuevo más tarde.', ''
 
     if not parsed:
-        return None, 'La IA no devolvió JSON válido.', ''
+        return None, 'La IA no devolvió un resultado legible. Probá con capturas más nítidas.', ''
 
     metricas = parsed.get('metricas')
     if not isinstance(metricas, list):

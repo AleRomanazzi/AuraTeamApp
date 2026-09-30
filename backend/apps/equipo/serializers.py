@@ -23,9 +23,14 @@ class TareaSerializer(serializers.ModelSerializer):
         model = Tarea
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
-            'fecha_limite', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
+            'fecha_limite', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado', 'notion_url',
         )
         read_only_fields = ('id', 'completada_en', 'creado')
+
+    notion_url = serializers.SerializerMethodField()
+
+    def get_notion_url(self, obj):
+        return f'https://www.notion.so/{obj.notion_page_id.replace("-", "")}' if obj.notion_page_id else None
 
     def to_representation(self, instance):
         instance.personas_asignadas = [a.persona for a in instance.asignaciones.all()]
@@ -96,7 +101,7 @@ class PersonaSerializer(serializers.ModelSerializer):
         model = Persona
         fields = (
             'id', 'nombre', 'rol', 'color', 'contactos', 'notas', 'tipo_vinculo', 'cuit', 'alias_cbu',
-            'activo', 'tareas', 'usuario', 'clientes',
+            'activo', 'tareas', 'usuario', 'clientes', 'notion_user_id',
         )
         read_only_fields = ('id',)
 

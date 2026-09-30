@@ -130,6 +130,17 @@ export default function Tareas() {
   const [editando, setEditando] = useState(null)
   const params = { cliente: cliente || undefined, persona: persona || undefined }
   const q = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
+  // Respaldo del webhook: trae lo editado en Notion al abrir la pantalla (el servidor lo limita a una vez por minuto).
+  useQuery({
+    queryKey: ['notion', 'incremental'],
+    queryFn: async () => {
+      const { data } = await api.post('notion/sincronizar/')
+      if (data.creadas || data.actualizadas || data.borradas) invalidar(qc, ['tareas', 'dashboard', 'mi-panel'])
+      return data
+    },
+    staleTime: 60_000,
+    retry: false,
+  })
 
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }) => api.patch(`tareas/${id}/`, { estado }),
@@ -211,7 +222,14 @@ export default function Tareas() {
                     )}
                     <Tag color={PRIORIDADES.find((p) => p.value === t.prioridad)?.tag}>{labelDe(PRIORIDADES, t.prioridad)}</Tag>
                   </div>
-                  <div className="task-card-title">{t.titulo}</div>
+                  <div className="task-card-title">
+                    {t.titulo}
+                    {t.notion_url ? (
+                      <a className="task-card-notion" href={t.notion_url} target="_blank" rel="noreferrer" title="Abrir en Notion" aria-label="Abrir en Notion">
+                        ↗
+                      </a>
+                    ) : null}
+                  </div>
                   {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
                   <div className="task-card-foot">
                     <span className={`small ${t.vencida ? 'down' : 'muted'}`}>

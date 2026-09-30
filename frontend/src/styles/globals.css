@@ -192,13 +192,15 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .persona-liq table td { padding: 10px 8px; }
 
 /* Tareas (tablero) */
-.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 14px; align-items: start; overflow-x: auto; padding-bottom: 4px; }
 .board-col { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; min-height: 120px; }
 .board-col-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .task-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 .task-card--late { border-color: rgba(255, 107, 107, 0.5); }
 .task-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .task-card-title { color: var(--text); font-weight: 500; font-size: 14px; }
+.task-card-notion { margin-left: 6px; color: var(--text-dim); text-decoration: none; font-size: 12px; }
+.task-card-notion:hover { color: var(--accent); }
 .task-card-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; white-space: pre-wrap; max-height: 60px; overflow: hidden; }
 .task-card-foot { margin-top: 8px; }
 .task-card-actions { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
@@ -277,7 +279,7 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
   .layout-side, .layout-cal { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
-  .board { grid-template-columns: 1fr; }
+  .board { grid-auto-flow: row; grid-template-columns: 1fr; }
   .cal-cell { min-height: 56px; }
   .cal-pill { display: none; }
   .cal-items::after { content: ''; }

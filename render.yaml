@@ -23,6 +23,8 @@ services:
         sync: false
       - key: AURA_GOOGLE_LOGIN_HINT
         sync: false
+      - key: NOTION_TOKEN
+        sync: false
       - key: AI_PROVIDER
         sync: false
       - key: AI_API_KEY

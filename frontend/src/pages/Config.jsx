@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import NotionConfig from '../components/config/NotionConfig'
 import Field from '../components/ui/Field'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
@@ -575,6 +576,7 @@ export default function Config() {
     { value: 'google', label: 'Google' },
     ...(me.es_admin
       ? [
+          { value: 'notion', label: 'Notion' },
           { value: 'usuarios', label: 'Usuarios' },
           { value: 'categorias', label: 'Categorías' },
           { value: 'datos', label: 'Datos' },
@@ -590,6 +592,7 @@ export default function Config() {
       </div>
       {actual === 'perfil' ? <Perfil key={me.id} me={me} /> : null}
       {actual === 'google' ? <Google key={me.id} me={me} /> : null}
+      {actual === 'notion' ? <NotionConfig /> : null}
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
       {actual === 'categorias' ? <Categorias /> : null}
       {actual === 'datos' ? <Datos /> : null}

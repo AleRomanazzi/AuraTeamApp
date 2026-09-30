@@ -25,6 +25,12 @@ AURA_GOOGLE_LOGIN_HINT = os.getenv("AURA_GOOGLE_LOGIN_HINT", "").strip()
 AURA_GOOGLE_TOKEN_KEY = os.getenv("AURA_GOOGLE_TOKEN_KEY", "").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
+# Notion (integración interna del workspace AuraTeam). Los IDs son de las fuentes de datos (data sources) de las
+# bases Tareas y Clientes; la integración tiene que estar agregada en "Conexiones" de ambas.
+NOTION_TOKEN = os.getenv("NOTION_TOKEN", "").strip()
+NOTION_TAREAS_DS = os.getenv("NOTION_TAREAS_DS", "b67f1243-7f10-480c-bb2e-158c7fd75196").strip()
+NOTION_CLIENTES_DS = os.getenv("NOTION_CLIENTES_DS", "4f207fc3-c612-4a54-959b-773e4a71b949").strip()
+
 DEBUG = env_bool("DEBUG", False)
 TESTING = "pytest" in sys.modules
 # Render define RENDER=true en todos sus servicios.
@@ -65,6 +71,7 @@ INSTALLED_APPS = [
     'apps.equipo',
     'apps.calendario',
     'apps.stats',
+    'apps.integraciones',
 ]
 
 MIDDLEWARE = [

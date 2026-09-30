@@ -26,6 +26,8 @@ export const QK = {
   usuarios: ['usuarios'],
   googleCal: (year, month) => ['google-calendar', year, month],
   googleEstado: ['google-estado'],
+  notionEstado: ['notion', 'estado'],
+  notionUsuarios: ['notion', 'usuarios'],
 }
 
 /** Grupos de datos que se ven afectados por un movimiento de dinero. */

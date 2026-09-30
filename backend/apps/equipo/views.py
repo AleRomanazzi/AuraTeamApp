@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de
 from apps.core.utils import money, parse_mes, today
+from apps.integraciones import notion
 
 from . import services
 from .models import AsignacionCliente, Liquidacion, Persona, Tarea
@@ -89,12 +90,17 @@ class TareaViewSet(viewsets.ModelViewSet):
         return qs.distinct()
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        notion.al_guardar_tarea(serializer.save(user=self.request.user))
 
     def perform_update(self, serializer):
         if not es_admin(self.request.user) and set(serializer.validated_data) - {'estado'}:
             raise PermissionDenied('Solo podés cambiar el estado de tus tareas.')
-        serializer.save()
+        notion.al_guardar_tarea(serializer.save())
+
+    def perform_destroy(self, instance):
+        page_id = instance.notion_page_id
+        instance.delete()
+        notion.al_borrar_tarea(page_id)
 
 
 class AsignacionClienteViewSet(viewsets.ModelViewSet):

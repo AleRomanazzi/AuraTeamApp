@@ -39,8 +39,10 @@ export const ESTADOS_LIQUIDACION = {
 }
 
 export const ESTADOS_TAREA = [
-  { value: 'pendiente', label: 'Pendiente', tag: 'yellow' },
-  { value: 'en_curso', label: 'En curso', tag: 'purple' },
+  { value: 'pendiente', label: 'Por hacer', tag: '' },
+  { value: 'en_curso', label: 'En progreso', tag: 'purple' },
+  { value: 'bloqueada', label: 'Bloqueada', tag: 'red' },
+  { value: 'en_revision', label: 'En revisión', tag: 'yellow' },
   { value: 'hecha', label: 'Hecha', tag: 'green' },
 ]
 

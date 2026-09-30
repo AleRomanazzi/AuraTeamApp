@@ -41,6 +41,7 @@ class Cliente(models.Model):
     color = models.CharField(max_length=12, default='#4fffb0')
     notas = models.TextField(blank=True)
     creado = models.DateTimeField(auto_now_add=True)
+    notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
 
     class Meta:
         ordering = ['nombre']

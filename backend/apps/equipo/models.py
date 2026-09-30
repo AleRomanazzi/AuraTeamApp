@@ -8,7 +8,13 @@ from django.db.models import Q
 from apps.finanzas.models import MEDIO_PAGO_CHOICES
 
 TIPO_VINCULO = [('freelancer', 'Freelancer'), ('empleado', 'Empleado'), ('socio', 'Socio')]
-ESTADO_TAREA = [('pendiente', 'Pendiente'), ('en_curso', 'En curso'), ('hecha', 'Hecha')]
+ESTADO_TAREA = [
+    ('pendiente', 'Por hacer'),
+    ('en_curso', 'En progreso'),
+    ('bloqueada', 'Bloqueada'),
+    ('en_revision', 'En revisión'),
+    ('hecha', 'Hecha'),
+]
 PRIORIDAD_TAREA = [('baja', 'Baja'), ('media', 'Media'), ('alta', 'Alta')]
 MODALIDAD_ASIGNACION = [('fijo', 'Fijo mensual'), ('porcentaje', 'Porcentaje del fee'), ('por_pieza', 'Por pieza')]
 ESTADO_LIQUIDACION = [
@@ -31,6 +37,7 @@ class Persona(models.Model):
     cuit = models.CharField(max_length=20, blank=True)
     alias_cbu = models.CharField(max_length=60, blank=True)
     activo = models.BooleanField(default=True)
+    notion_user_id = models.CharField(max_length=36, blank=True)
 
     class Meta:
         ordering = ['nombre']
@@ -44,11 +51,14 @@ class Tarea(models.Model):
     titulo = models.CharField(max_length=200)
     descripcion = models.TextField(blank=True)
     cliente = models.ForeignKey('clientes.Cliente', null=True, blank=True, on_delete=models.SET_NULL, related_name='tareas')
-    estado = models.CharField(max_length=10, choices=ESTADO_TAREA, default='pendiente')
+    estado = models.CharField(max_length=12, choices=ESTADO_TAREA, default='pendiente')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
     fecha_limite = models.DateField(null=True, blank=True)
     completada_en = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True, null=True)
+    notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
+    # Huella de los campos sincronizados la última vez que panel y Notion coincidieron: evita reaplicar ecos propios.
+    notion_huella = models.CharField(max_length=64, blank=True)
 
     class Meta:
         ordering = ['estado', 'fecha_limite', 'titulo']

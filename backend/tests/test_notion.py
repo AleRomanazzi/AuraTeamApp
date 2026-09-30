@@ -14,6 +14,7 @@ from apps.integraciones.models import EstadoNotion
 TAREAS_DS = 'b67f1243-7f10-480c-bb2e-158c7fd75196'
 CLIENTES_DS = '4f207fc3-c612-4a54-959b-773e4a71b949'
 UID_LAU = str(uuid.uuid4())
+BOT = str(uuid.uuid4())
 
 
 def _leer(nombre, valor):
@@ -29,12 +30,14 @@ class NotionFalso:
     def __init__(self):
         self.paginas = {}
         self.llamadas = []
+        self.al_crear = None
 
-    def agregar(self, ds, props, in_trash=False):
+    def agregar(self, ds, props, in_trash=False, autor=UID_LAU):
         pid = str(uuid.uuid4())
         self.paginas[pid] = {
             'id': pid,
             'parent': {'type': 'data_source_id', 'data_source_id': ds},
+            'created_by': {'object': 'user', 'id': autor},
             'in_trash': in_trash,
             'properties': {k: _leer(k, v) for k, v in props.items()},
         }
@@ -48,8 +51,12 @@ class NotionFalso:
             res = [p for p in self.paginas.values() if p['parent']['data_source_id'] == ds and not p['in_trash']]
             return httpx.Response(200, json={'results': res, 'has_more': False})
         if method == 'POST' and path == '/pages':
-            pid = self.agregar(json['parent']['data_source_id'], json['properties'])
+            pid = self.agregar(json['parent']['data_source_id'], json['properties'], autor=BOT)
+            if self.al_crear:
+                self.al_crear(self.paginas[pid])
             return httpx.Response(200, json=self.paginas[pid])
+        if path == '/users/me':
+            return httpx.Response(200, json={'object': 'user', 'id': BOT, 'type': 'bot'})
         if path.startswith('/pages/'):
             pid = str(uuid.UUID(path.split('/')[2]))
             page = self.paginas.get(pid)
@@ -172,6 +179,19 @@ def test_incremental_se_limita_y_la_puede_pedir_el_equipo(equipo_client, falso):
     assert equipo_client.post('/api/notion/sincronizar/', {'completa': True}, format='json').data['creadas'] == 1
     assert EstadoNotion.get().ultima_sync_completa is None
     assert equipo_client.post('/api/notion/sincronizar/').data == {'omitida': True}
+
+
+@pytest.mark.django_db
+def test_el_eco_del_webhook_no_duplica_la_tarea(api_client, falso, persona):
+    # El webhook de la página recién creada llega antes de que el panel guarde el vínculo.
+    falso.al_crear = lambda page: notion.aplicar_pagina(page)
+    api_client.post('/api/tareas/', {'titulo': 'Historia'}, format='json')
+    assert Tarea.objects.count() == 1 and Tarea.objects.get().notion_page_id
+
+    # Y si igual se coló un eco (p. ej. creado antes de este arreglo), se descarta al vincular.
+    falso.al_crear = lambda page: Tarea.objects.create(titulo='Eco', notion_page_id=notion._norm(page['id']))
+    api_client.post('/api/tareas/', {'titulo': 'Otra'}, format='json')
+    assert sorted(Tarea.objects.values_list('titulo', flat=True)) == ['Historia', 'Otra']
 
 
 @pytest.mark.django_db

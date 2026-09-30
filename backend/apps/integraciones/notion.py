@@ -111,6 +111,21 @@ def _consultar(ds_id, filtro=None):
         body['start_cursor'] = data['next_cursor']
 
 
+_BOT = {}
+
+
+def _bot_id() -> str:
+    """Usuario (bot) de la integración: las páginas que crea son siempre de tareas del panel."""
+    if settings.NOTION_TOKEN not in _BOT:
+        _BOT[settings.NOTION_TOKEN] = _norm(_request('GET', '/users/me')['id'])
+    return _BOT[settings.NOTION_TOKEN]
+
+
+def _creada_por_el_panel(page) -> bool:
+    autor = (page.get('created_by') or {}).get('id')
+    return bool(autor) and _norm(autor) == _bot_id()
+
+
 def registrar_error(mensaje: str):
     EstadoNotion.objects.update_or_create(pk=1, defaults={'ultimo_error': mensaje[:1000], 'ultimo_error_en': timezone.now()})
 
@@ -203,6 +218,8 @@ def enviar_tarea(tarea: Tarea):
             'POST', '/pages', {'parent': {'type': 'data_source_id', 'data_source_id': settings.NOTION_TAREAS_DS}, 'properties': props}
         )
         page_id = _norm(page['id'])
+        # El webhook de la página recién creada puede llegar antes de guardar el vínculo y crear un eco: se descarta.
+        Tarea.objects.filter(notion_page_id=page_id).exclude(pk=tarea.pk).delete()
     tarea.notion_page_id = page_id
     tarea.notion_huella = _huella(datos)
     Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=page_id, notion_huella=tarea.notion_huella)
@@ -262,6 +279,9 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=()):
         tarea = candidatos.pop(_clave(datos['titulo']), None)
         resultado = 'vinculada' if tarea else resultado
     if tarea is None:
+        if _creada_por_el_panel(page):
+            # Página de una tarea del panel cuyo vínculo todavía no se guardó (o se borró): no se duplica.
+            return None
         tarea = Tarea()
         resultado = 'creada'
 

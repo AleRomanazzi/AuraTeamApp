@@ -25,7 +25,8 @@ def repartir_cobro(*, cliente, periodo, concepto, filas, pago=None, user=None) -
 
 @transaction.atomic
 def pagar_liquidacion(liq: Liquidacion, *, fecha=None, medio_pago='', comprobante='', user=None) -> Liquidacion:
-    liq = Liquidacion.objects.select_for_update().select_related('persona', 'cliente').get(pk=liq.pk)
+    # Postgres no permite FOR UPDATE sobre el lado nullable de un LEFT JOIN (cliente).
+    liq = Liquidacion.objects.select_for_update(of=('self',)).select_related('persona', 'cliente').get(pk=liq.pk)
     if liq.estado == 'pagada':
         raise ValidationError({'detail': 'La liquidación ya está pagada.'})
     if liq.estado == 'anulada':

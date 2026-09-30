@@ -50,7 +50,8 @@ def _estado_por_monto(cobro: Cobro) -> str:
 
 @transaction.atomic
 def registrar_pago(cobro: Cobro, *, monto=None, fecha=None, medio_pago='', comprobante='', notas='', user=None) -> Cobro:
-    cobro = Cobro.objects.select_for_update().select_related('cliente', 'contrato').get(pk=cobro.pk)
+    # Postgres no permite FOR UPDATE sobre el lado nullable de un LEFT JOIN (contrato).
+    cobro = Cobro.objects.select_for_update(of=('self',)).select_related('cliente', 'contrato').get(pk=cobro.pk)
     if cobro.estado == 'anulado':
         raise ValidationError({'detail': 'El cobro está anulado.'})
     saldo = cobro.saldo

@@ -1,18 +1,16 @@
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import Field from '../components/ui/Field'
-import Modal from '../components/ui/Modal'
+import EventoForm from '../components/calendario/EventoForm'
 import MonthPicker from '../components/ui/MonthPicker'
 import PageHeader from '../components/ui/PageHeader'
 import Tag from '../components/ui/Tag'
-import { insertPrimaryCalendarEvent, listPrimaryMonthEvents } from '../features/google/calendarApi'
+import { listPrimaryMonthEvents } from '../features/google/calendarApi'
 import { isSignedIn } from '../features/google/gapiClient'
 import { useGoogleStore } from '../features/google/googleStore'
-import { useClientes, useEsAdmin } from '../hooks/useData'
+import { useEsAdmin } from '../hooks/useData'
 import { api, getList } from '../lib/api'
-import { COLORES } from '../lib/constants'
-import { currentMonth, fmtCorto, formatFecha, toDatetimeLocal, todayISO } from '../lib/format'
+import { celdasMes, currentMonth, diaDe, fmtCorto, formatFecha, horaDe, todayISO } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
 import { QK } from '../lib/queryKeys'
 import { confirmar } from '../store/confirmStore'
@@ -22,109 +20,6 @@ const TIPO_LABEL = { cobro: 'Cobro', contrato: 'Cobro (sin generar)', suscripcio
 const TIPO_LINK = { cobro: '/cobros', contrato: '/cobros', suscripcion: '/suscripciones', tarea: '/tareas' }
 
 const pad = (n) => String(n).padStart(2, '0')
-const diaDe = (valor) => {
-  if (!valor) return ''
-  const s = String(valor)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-  const d = new Date(s)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-const horaDe = (valor) => (/T\d{2}:\d{2}/.test(String(valor)) ? new Date(valor).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '')
-
-function EventoForm({ inicial, dia, onClose }) {
-  const qc = useQueryClient()
-  const { data: clientes = [] } = useClientes()
-  const google = isSignedIn()
-  const [f, setF] = useState(() => ({
-    titulo: inicial?.titulo ?? '',
-    inicio: inicial?.inicio ? toDatetimeLocal(inicial.inicio) : `${dia}T10:00`,
-    fin: inicial?.fin ? toDatetimeLocal(inicial.fin) : '',
-    cliente: inicial?.cliente ?? '',
-    color: inicial?.color ?? COLORES[1],
-    descripcion: inicial?.descripcion ?? '',
-  }))
-  const [copiarGoogle, setCopiarGoogle] = useState(false)
-  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
-
-  const guardar = useMutation({
-    mutationFn: async () => {
-      const body = {
-        ...f,
-        inicio: new Date(f.inicio).toISOString(),
-        fin: f.fin ? new Date(f.fin).toISOString() : null,
-        cliente: f.cliente || null,
-      }
-      if (copiarGoogle && !inicial?.google_event_id) {
-        const g = await insertPrimaryCalendarEvent({ titulo: f.titulo, descripcion: f.descripcion, inicio: f.inicio, fin: f.fin })
-        body.google_event_id = g?.id || ''
-      }
-      return inicial?.id ? api.put(`cal-eventos/${inicial.id}/`, body) : api.post('cal-eventos/', body)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['cal-eventos'] })
-      qc.invalidateQueries({ queryKey: ['google-calendar'] })
-      qc.invalidateQueries({ queryKey: ['mi-panel'] })
-      notify(inicial?.id ? 'Evento actualizado' : 'Evento creado')
-      onClose()
-    },
-    onError: (e) => notifyError(e, e?.result?.error?.message || 'No se pudo guardar el evento'),
-  })
-
-  return (
-    <Modal
-      title={inicial?.id ? 'Editar evento' : 'Nuevo evento'}
-      onClose={onClose}
-      onSubmit={() => guardar.mutate()}
-      footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={guardar.isPending}>
-            Guardar
-          </button>
-        </>
-      }
-    >
-      <Field label="Título">
-        <input value={f.titulo} onChange={set('titulo')} required maxLength={120} placeholder="Reunión, sesión de fotos, lanzamiento…" />
-      </Field>
-      <div className="grid-2 tight">
-        <Field label="Inicio">
-          <input type="datetime-local" value={f.inicio} onChange={set('inicio')} required />
-        </Field>
-        <Field label="Fin (opcional)">
-          <input type="datetime-local" value={f.fin} onChange={set('fin')} min={f.inicio} />
-        </Field>
-      </div>
-      <Field label="Cliente">
-        <select value={f.cliente ?? ''} onChange={set('cliente')}>
-          <option value="">— Ninguno —</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Descripción">
-        <textarea rows={3} value={f.descripcion} onChange={set('descripcion')} />
-      </Field>
-      <Field label="Color">
-        <div className="color-picker">
-          {COLORES.map((c) => (
-            <button key={c} type="button" className={`color-swatch${f.color === c ? ' active' : ''}`} style={{ background: c }} aria-label={`Color ${c}`} onClick={() => setF((s) => ({ ...s, color: c }))} />
-          ))}
-        </div>
-      </Field>
-      {google && !inicial?.google_event_id ? (
-        <label className="check-row">
-          <input type="checkbox" checked={copiarGoogle} onChange={(e) => setCopiarGoogle(e.target.checked)} /> Crear también en Google Calendar
-        </label>
-      ) : null}
-    </Modal>
-  )
-}
 
 export default function Calendario() {
   const qc = useQueryClient()
@@ -173,13 +68,7 @@ export default function Calendario() {
     return mapa
   }, [venc.data, eventos.data, gcal.data])
 
-  const celdas = useMemo(() => {
-    const primero = (new Date(y, m - 1, 1).getDay() + 6) % 7
-    const arr = Array.from({ length: primero }, () => null)
-    for (let d = 1; d <= ultimo; d++) arr.push(`${mes}-${pad(d)}`)
-    while (arr.length % 7) arr.push(null)
-    return arr
-  }, [y, m, ultimo, mes])
+  const celdas = useMemo(() => celdasMes(mes), [mes])
 
   const itemsDia = porDia[diaSel] ?? []
   const totalCobrar = (venc.data?.items ?? []).filter((i) => (i.tipo === 'cobro' || i.tipo === 'contrato') && i.estado !== 'pagado').reduce((a, i) => a + Number(i.monto || 0), 0)

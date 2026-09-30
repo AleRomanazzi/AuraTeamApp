@@ -226,6 +226,35 @@ def test_rol_equipo_ve_todas_las_tareas_y_edita_las_suyas(equipo_client, equipo_
 
 
 @pytest.mark.django_db
+def test_links_de_tarea_se_normalizan_y_validan(api_client):
+    r = api_client.post(
+        '/api/tareas/',
+        {'titulo': 'Reel', 'links': [{'titulo': 'Drive', 'url': 'drive.google.com/x'}, {'titulo': 'vacío', 'url': ' '}]},
+        format='json',
+    )
+    assert r.status_code == 201, r.data
+    assert r.data['links'] == [{'titulo': 'Drive', 'url': 'https://drive.google.com/x'}]
+    r = api_client.patch(f'/api/tareas/{r.data["id"]}/', {'links': [{'titulo': 'x', 'url': 'javascript:alert(1)'}]}, format='json')
+    assert r.status_code == 400
+    r = api_client.post('/api/tareas/', {'titulo': 'Muchos', 'links': [{'url': f'https://a.com/{i}'} for i in range(21)]}, format='json')
+    assert r.status_code == 400
+
+
+@pytest.mark.django_db
+def test_clientes_mios_filtra_por_asignacion(equipo_client, cm_client, api_client, persona, cliente):
+    from apps.clientes.models import Cliente
+    from apps.equipo.models import AsignacionCliente, Persona
+
+    otro = Cliente.objects.create(nombre='Otro')
+    AsignacionCliente.objects.create(persona=persona, cliente=cliente, rol='Fotografía')
+    AsignacionCliente.objects.create(persona=Persona.objects.get(nombre='Caro'), cliente=cliente, rol='CM')
+    assert [c['id'] for c in equipo_client.get('/api/clientes/?mios=1').data] == [cliente.id]
+    assert [c['id'] for c in cm_client.get('/api/clientes/?mios=1').data] == [cliente.id]
+    assert {c['id'] for c in equipo_client.get('/api/clientes/').data} == {cliente.id, otro.id}
+    assert api_client.get('/api/clientes/?mios=1').data == []
+
+
+@pytest.mark.django_db
 def test_rol_cm_ve_fichas_de_clientes_y_estadisticas(cm_client, equipo_client, cliente):
     ficha = cm_client.get(f'/api/clientes/{cliente.id}/').data
     assert 'contacto' in ficha and 'notas' in ficha

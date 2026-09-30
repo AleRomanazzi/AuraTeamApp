@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import URLValidator
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -9,6 +11,8 @@ from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Tarea
+
+MAX_LINKS_TAREA = 20
 
 
 def es_tarea_propia(user, tarea) -> bool:
@@ -31,8 +35,8 @@ class TareaSerializer(serializers.ModelSerializer):
         model = Tarea
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
-            'fecha_limite', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado', 'notion_url',
-            'creado_por', 'puede_editar',
+            'fecha_limite', 'links', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
+            'notion_url', 'creado_por', 'puede_editar',
         )
         read_only_fields = ('id', 'completada_en', 'creado')
 
@@ -64,6 +68,28 @@ class TareaSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('El título es obligatorio.')
         return value
+
+    def validate_links(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Se espera una lista de links.')
+        if len(value) > MAX_LINKS_TAREA:
+            raise serializers.ValidationError(f'Máximo {MAX_LINKS_TAREA} links por tarea.')
+        limpios = []
+        for item in value:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError('Cada link debe tener título y URL.')
+            url = str(item.get('url') or '').strip()
+            titulo = str(item.get('titulo') or '').strip()[:120]
+            if not url:
+                continue
+            if not url.lower().startswith(('http://', 'https://')):
+                url = f'https://{url}'
+            try:
+                URLValidator(schemes=['http', 'https'])(url)
+            except DjangoValidationError:
+                raise serializers.ValidationError(f'URL inválida: {url[:80]}')
+            limpios.append({'titulo': titulo, 'url': url[:500]})
+        return limpios
 
     def _aplicar_estado(self, validated, instance=None):
         estado = validated.get('estado')

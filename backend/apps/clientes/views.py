@@ -8,8 +8,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.csv_utils import csv_response, monto_es
-from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, requiere_permiso, tiene_permiso
+from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, requiere_permiso, tiene_permiso
 from apps.core.utils import add_months, mes_label, money, parse_mes, today
+from apps.equipo.models import AsignacionCliente
 
 from . import services
 from .models import Cliente, Cobro, Contrato
@@ -76,6 +77,10 @@ class ClienteViewSet(viewsets.ModelViewSet):
         if p.get('q'):
             q = p['q'].strip()
             qs = qs.filter(Q(nombre__icontains=q) | Q(razon_social__icontains=q) | Q(rubro__icontains=q))
+        if p.get('mios') in ('1', 'true'):
+            persona = persona_de(self.request.user)
+            asignados = AsignacionCliente.objects.filter(persona=persona, activo=True).values('cliente_id')
+            qs = qs.filter(id__in=asignados) if persona else qs.none()
         if not es_admin(self.request.user):
             if tiene_permiso(self.request.user, 'clientes'):
                 return qs.prefetch_related('asignaciones__persona')

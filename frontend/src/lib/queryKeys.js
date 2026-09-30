@@ -32,6 +32,7 @@ export const QK = {
 
 /** Grupos de datos que se ven afectados por un movimiento de dinero. */
 export const DINERO = ['dashboard', 'transacciones', 'cobros', 'liquidaciones', 'clientes', 'rentabilidad', 'servicios', 'vencimientos', 'mi-panel']
+export const TAREAS = ['tareas', 'dashboard', 'mi-panel', 'vencimientos']
 
 export function invalidar(qc, grupos) {
   return Promise.all(grupos.map((g) => qc.invalidateQueries({ queryKey: [g] })))

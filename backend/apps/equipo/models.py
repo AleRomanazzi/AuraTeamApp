@@ -54,6 +54,7 @@ class Tarea(models.Model):
     estado = models.CharField(max_length=12, choices=ESTADO_TAREA, default='pendiente')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
     fecha_limite = models.DateField(null=True, blank=True)
+    links = models.JSONField(default=list, blank=True)
     completada_en = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True, null=True)
     notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)

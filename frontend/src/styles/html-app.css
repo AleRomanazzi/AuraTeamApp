@@ -19,7 +19,7 @@ body {
   width: 100%;
   max-width: 100%;
   display: flex;
-  overflow-x: hidden;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
 }
 #root {

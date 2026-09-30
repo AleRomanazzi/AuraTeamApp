@@ -73,6 +73,38 @@ export function toDatetimeLocal(value) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+/** Día local YYYY-MM-DD de una fecha o datetime ISO. */
+export function diaDe(value) {
+  const d = parseLocalDate(value)
+  return d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : ''
+}
+
+export function horaDe(value) {
+  return /T\d{2}:\d{2}/.test(String(value)) ? new Date(value).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''
+}
+
+export function sumarDias(dia, n) {
+  const d = parseLocalDate(dia)
+  d.setDate(d.getDate() + n)
+  return diaDe(d)
+}
+
+/** Lunes de la semana del día dado. */
+export function lunesDe(dia) {
+  const d = parseLocalDate(dia)
+  return sumarDias(dia, -((d.getDay() + 6) % 7))
+}
+
+/** Celdas de un mes (YYYY-MM) empezando en lunes; null en los huecos. */
+export function celdasMes(mes) {
+  const [y, m] = mes.split('-').map(Number)
+  const ultimo = new Date(y, m, 0).getDate()
+  const arr = Array.from({ length: (new Date(y, m - 1, 1).getDay() + 6) % 7 }, () => null)
+  for (let d = 1; d <= ultimo; d++) arr.push(`${mes}-${pad(d)}`)
+  while (arr.length % 7) arr.push(null)
+  return arr
+}
+
 export function diasHasta(value) {
   const d = parseLocalDate(value)
   if (!d) return null

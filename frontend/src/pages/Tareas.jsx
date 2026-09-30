@@ -1,130 +1,31 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import Field from '../components/ui/Field'
-import Modal from '../components/ui/Modal'
+import EventoForm from '../components/calendario/EventoForm'
+import CalendarioCliente from '../components/tareas/CalendarioCliente'
+import ClienteBloque from '../components/tareas/ClienteBloque'
+import TableroTareas from '../components/tareas/TableroTareas'
+import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
-import Tag from '../components/ui/Tag'
 import { useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
-import { ESTADOS_TAREA, PRIORIDADES, labelDe } from '../lib/constants'
-import { formatFechaCorta } from '../lib/format'
+import { diaDe, lunesDe, sumarDias, todayISO } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
-import { QK, invalidar } from '../lib/queryKeys'
-import { confirmar } from '../store/confirmStore'
+import { QK, TAREAS, invalidar } from '../lib/queryKeys'
 
+const FILTROS = [
+  { value: 'todas', label: 'Todas' },
+  { value: 'mias', label: 'Mis tareas' },
+  { value: 'vencidas', label: 'Vencidas' },
+  { value: 'semana', label: 'Esta semana' },
+]
+const SIN_CLIENTE = { id: null, nombre: 'Sin cliente', color: '' }
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
 
-function TareaForm({ inicial, puedeReasignar, onClose }) {
-  const qc = useQueryClient()
-  const { data: clientes = [] } = useClientes()
-  const { data: personas = [] } = usePersonas()
-  const [f, setF] = useState(() => ({
-    titulo: inicial?.titulo ?? '',
-    descripcion: inicial?.descripcion ?? '',
-    cliente: inicial?.cliente ?? '',
-    estado: inicial?.estado ?? 'pendiente',
-    prioridad: inicial?.prioridad ?? 'media',
-    fecha_limite: inicial?.fecha_limite ?? '',
-    asignados: inicial?.asignados ?? [],
-  }))
-  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
-  const toggle = (id) => setF((s) => ({ ...s, asignados: s.asignados.includes(id) ? s.asignados.filter((x) => x !== id) : [...s.asignados, id] }))
-
-  const guardar = useMutation({
-    mutationFn: () => {
-      const body = { ...f, cliente: f.cliente || null, fecha_limite: f.fecha_limite || null }
-      return inicial?.id ? api.put(`tareas/${inicial.id}/`, body) : api.post('tareas/', body)
-    },
-    onSuccess: () => {
-      invalidar(qc, ['tareas', 'dashboard', 'mi-panel', 'vencimientos'])
-      notify(inicial?.id ? 'Tarea actualizada' : 'Tarea creada')
-      onClose()
-    },
-    onError: (e) => notifyError(e, 'No se pudo guardar la tarea'),
-  })
-
-  return (
-    <Modal
-      title={inicial?.id ? 'Editar tarea' : 'Nueva tarea'}
-      onClose={onClose}
-      size="lg"
-      onSubmit={() => guardar.mutate()}
-      footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={guardar.isPending}>
-            Guardar
-          </button>
-        </>
-      }
-    >
-      <Field label="Título">
-        <input value={f.titulo} onChange={set('titulo')} required maxLength={200} placeholder="Grilla de noviembre, reel de lanzamiento…" />
-      </Field>
-      <Field label="Descripción">
-        <textarea rows={3} value={f.descripcion} onChange={set('descripcion')} />
-      </Field>
-      <div className="grid-2 tight">
-        <Field label="Cliente">
-          <select value={f.cliente ?? ''} onChange={set('cliente')}>
-            <option value="">— Interna —</option>
-            {clientes
-              .filter((c) => c.estado !== 'baja' || c.id === f.cliente)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nombre}
-                </option>
-              ))}
-          </select>
-        </Field>
-        <Field label="Fecha límite">
-          <input type="date" value={f.fecha_limite ?? ''} onChange={set('fecha_limite')} />
-        </Field>
-      </div>
-      <div className="grid-2 tight">
-        <Field label="Estado">
-          <select value={f.estado} onChange={set('estado')}>
-            {ESTADOS_TAREA.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Prioridad">
-          <select value={f.prioridad} onChange={set('prioridad')}>
-            {PRIORIDADES.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      <Field label="Responsables" hint={puedeReasignar ? (inicial?.id ? null : 'Si no elegís a nadie, la tarea queda a tu nombre.') : 'Solo quien creó la tarea o un administrador puede cambiar los responsables.'}>
-        <div className="chip-select">
-          {personas
-            .filter((p) => p.activo || f.asignados.includes(p.id))
-            .map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`chip${f.asignados.includes(p.id) ? ' active' : ''}`}
-                onClick={() => toggle(p.id)}
-                aria-pressed={f.asignados.includes(p.id)}
-                disabled={!puedeReasignar}
-              >
-                {p.nombre}
-              </button>
-            ))}
-        </div>
-      </Field>
-    </Modal>
-  )
-}
+const ordenar = (a, b) =>
+  Number(b.vencida) - Number(a.vencida) ||
+  String(a.fecha_limite || '9999').localeCompare(String(b.fecha_limite || '9999')) ||
+  ORDEN_PRIORIDAD[a.prioridad] - ORDEN_PRIORIDAD[b.prioridad]
 
 export default function Tareas() {
   const qc = useQueryClient()
@@ -132,13 +33,22 @@ export default function Tareas() {
   const esAdmin = Boolean(me?.es_admin)
   const { data: clientes = [] } = useClientes()
   const { data: personas = [] } = usePersonas()
-  const [cliente, setCliente] = useState('')
-  const [persona, setPersona] = useState('')
+  const [vista, setVista] = useState('clientes')
+  const [filtro, setFiltro] = useState('todas')
   const [busqueda, setBusqueda] = useState('')
-  const [editando, setEditando] = useState(null)
-  const [vista, setVista] = useState('pendiente')
-  const params = { cliente: cliente || undefined, persona: persona || undefined }
-  const q = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
+  const [tareaAbierta, setTareaAbierta] = useState(null)
+  const [calendario, setCalendario] = useState(null)
+  const [evento, setEvento] = useState(null)
+
+  const hoy = todayISO()
+  const lunes = lunesDe(hoy)
+  const proximas = useMemo(() => Array.from({ length: 28 }, (_, i) => sumarDias(lunes, i)), [lunes])
+  const semana = proximas.slice(0, 7)
+
+  const q = useQuery({ queryKey: QK.tareas({}), queryFn: () => getList('tareas/') })
+  const mios = useQuery({ queryKey: ['clientes', 'mios'], queryFn: () => getList('clientes/', { mios: 1 }), enabled: Boolean(me) && !esAdmin })
+  const rango = { desde: proximas[0], hasta: `${proximas[27]}T23:59:59` }
+  const eventos = useQuery({ queryKey: QK.calEventos(rango), queryFn: () => getList('cal-eventos/', rango) })
   // Respaldo del webhook: trae lo editado en Notion al abrir la pantalla (el servidor lo limita a una vez por minuto).
   useQuery({
     queryKey: ['notion', 'incremental'],
@@ -153,139 +63,148 @@ export default function Tareas() {
 
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }) => api.patch(`tareas/${id}/`, { estado }),
-    onSuccess: () => invalidar(qc, ['tareas', 'dashboard', 'mi-panel']),
-    onError: (e) => notifyError(e),
-  })
-  const borrar = useMutation({
-    mutationFn: (id) => api.delete(`tareas/${id}/`),
-    onSuccess: () => {
-      invalidar(qc, ['tareas', 'dashboard', 'mi-panel'])
-      notify('Tarea eliminada')
+    onSuccess: (_, { estado }) => {
+      invalidar(qc, TAREAS)
+      if (estado === 'hecha') notify('Tarea hecha')
     },
     onError: (e) => notifyError(e),
   })
 
-  const columnas = useMemo(() => {
+  const personasPorId = useMemo(() => Object.fromEntries(personas.map((p) => [p.id, p])), [personas])
+
+  const filtradas = useMemo(() => {
     const s = busqueda.trim().toLowerCase()
-    const lista = (q.data ?? []).filter((t) => !s || `${t.titulo} ${t.descripcion} ${t.cliente_nombre ?? ''}`.toLowerCase().includes(s))
-    return ESTADOS_TAREA.map((e) => ({
-      ...e,
-      tareas: lista
-        .filter((t) => t.estado === e.value)
-        .sort((a, b) =>
-          e.value === 'hecha'
-            ? String(b.completada_en).localeCompare(String(a.completada_en))
-            : ORDEN_PRIORIDAD[a.prioridad] - ORDEN_PRIORIDAD[b.prioridad] || String(a.fecha_limite || '9999').localeCompare(String(b.fecha_limite || '9999')),
-        ),
-    }))
-  }, [q.data, busqueda])
+    return (q.data ?? []).filter((t) => {
+      if (s && !`${t.titulo} ${t.descripcion} ${t.cliente_nombre ?? ''}`.toLowerCase().includes(s)) return false
+      if (filtro === 'mias') return Boolean(me?.persona) && t.asignados.includes(me.persona)
+      if (filtro === 'vencidas') return t.vencida
+      if (filtro === 'semana') return Boolean(t.fecha_limite) && t.fecha_limite >= semana[0] && t.fecha_limite <= semana[6]
+      return true
+    })
+  }, [q.data, busqueda, filtro, me, semana])
+
+  const bloques = useMemo(() => {
+    const abiertas = filtradas.filter((t) => t.estado !== 'hecha')
+    const base = esAdmin ? clientes.filter((c) => c.estado === 'activo') : (mios.data ?? [])
+    const lista = new Map(base.map((c) => [c.id, { id: c.id, nombre: c.nombre, color: c.color }]))
+    for (const t of abiertas) {
+      const mia = Boolean(me?.persona) && t.asignados.includes(me.persona)
+      if (t.cliente && !lista.has(t.cliente) && (esAdmin || mia)) lista.set(t.cliente, { id: t.cliente, nombre: t.cliente_nombre, color: t.cliente_color })
+    }
+    const marcas = {}
+    const marcar = (clave, dia, it) => {
+      const porDia = (marcas[clave] = marcas[clave] || {})
+      ;(porDia[dia] = porDia[dia] || []).push(it)
+    }
+    for (const e of eventos.data ?? []) marcar(e.cliente ?? 'interno', diaDe(e.inicio), { key: `e${e.id}`, tipo: 'evento', color: e.color })
+    for (const t of abiertas) if (t.fecha_limite) marcar(t.cliente ?? 'interno', t.fecha_limite, { key: `t${t.id}`, tipo: 'tarea', color: t.cliente_color || 'var(--gold)' })
+
+    const filtrando = filtro !== 'todas' || busqueda.trim()
+    return [...[...lista.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), SIN_CLIENTE]
+      .map((c) => ({
+        cliente: c,
+        tareas: abiertas.filter((t) => (t.cliente ?? null) === c.id).sort(ordenar),
+        marcas: marcas[c.id ?? 'interno'] ?? {},
+      }))
+      .filter((b) => !filtrando || b.tareas.length)
+  }, [filtradas, esAdmin, clientes, mios.data, me, eventos.data, filtro, busqueda])
+
+  const irA = (id) => document.getElementById(`bloque-${id ?? 'interno'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const tareasDeCalendario = calendario ? (q.data ?? []).filter((t) => t.estado !== 'hecha' && (t.cliente ?? null) === calendario.cliente.id) : []
 
   return (
     <>
-      <PageHeader titulo="Tareas" subtitulo={esAdmin ? 'Qué hay que hacer, para quién y para cuándo' : 'Las de todo el equipo; editás las tuyas'}>
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditando({})}>
+      <PageHeader titulo="Tareas" subtitulo={esAdmin ? 'Tareas y agenda de cada cliente' : 'Tus clientes: tareas y agenda. Editás las tuyas.'}>
+        <div className="seg" role="tablist" aria-label="Vista">
+          <button type="button" role="tab" aria-selected={vista === 'clientes'} className={vista === 'clientes' ? 'active' : ''} onClick={() => setVista('clientes')}>
+            Por cliente
+          </button>
+          <button type="button" role="tab" aria-selected={vista === 'tablero'} className={vista === 'tablero' ? 'active' : ''} onClick={() => setVista('tablero')}>
+            Tablero
+          </button>
+        </div>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setTareaAbierta({})}>
           + Nueva tarea
         </button>
       </PageHeader>
-      <div className="filters">
-        <input type="search" placeholder="Buscar…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar tareas" />
-        <select value={cliente} onChange={(e) => setCliente(e.target.value)} aria-label="Cliente">
-          <option value="">Todos los clientes</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-        <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Persona">
-          <option value="">Todo el equipo</option>
-          {me?.persona ? <option value={me.persona}>Mis tareas</option> : null}
-          {personas
-            .filter((p) => p.id !== me?.persona)
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
-            ))}
-        </select>
-      </div>
-      <QueryState query={q} vacio="No hay tareas. Creá la primera.">
-        <div className="board-switch" role="tablist" aria-label="Estado">
-          {columnas.map((col) => (
-            <button key={col.value} type="button" role="tab" aria-selected={vista === col.value} className={`chip${vista === col.value ? ' active' : ''}`} onClick={() => setVista(col.value)}>
-              {col.label} <b>{col.tareas.length}</b>
+
+      <div className="filters tc-filtros">
+        <input type="search" placeholder="Buscar tarea o cliente…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar tareas" />
+        <div className="chip-select tc-chips" role="radiogroup" aria-label="Filtro">
+          {FILTROS.map((f) => (
+            <button key={f.value} type="button" role="radio" aria-checked={filtro === f.value} className={`chip${filtro === f.value ? ' active' : ''}`} onClick={() => setFiltro(f.value)}>
+              {f.label}
             </button>
           ))}
         </div>
-        <div className="board">
-          {columnas.map((col) => (
-            <div key={col.value} className={`board-col${vista === col.value ? ' board-col--visible' : ''}`}>
-              <div className="board-col-head">
-                <Tag color={col.tag}>{col.label}</Tag>
-                <span className="board-col-count">{col.tareas.length}</span>
+      </div>
+
+      <QueryState query={q}>
+        {() =>
+          vista === 'tablero' ? (
+            <TableroTareas tareas={filtradas} onAbrir={(t) => setTareaAbierta({ tarea: t })} onCambiarEstado={(t, estado) => cambiarEstado.mutate({ id: t.id, estado })} />
+          ) : (
+            <>
+              {bloques.length > 1 ? (
+                <nav className="tc-saltos" aria-label="Ir a cliente">
+                  {bloques.map((b) => (
+                    <button key={b.cliente.id ?? 'interno'} type="button" className="tc-salto" onClick={() => irA(b.cliente.id)}>
+                      <span className="cat-dot" style={{ background: b.cliente.color || 'var(--text-dim)' }} />
+                      {b.cliente.nombre}
+                      {b.tareas.length ? <span className="tc-salto-n">{b.tareas.length}</span> : null}
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
+              {bloques.length === 0 ? (
+                <div className="state-box">{!esAdmin && mios.data?.length === 0 ? 'Todavía no tenés clientes asignados.' : 'No hay tareas con ese filtro.'}</div>
+              ) : null}
+              <div className="tc-lista">
+                {bloques.map((b) => (
+                  <ClienteBloque
+                    key={b.cliente.id ?? 'interno'}
+                    cliente={b.cliente}
+                    tareas={b.tareas}
+                    marcasPorDia={b.marcas}
+                    semana={semana}
+                    proximas={proximas}
+                    hoy={hoy}
+                    personas={personasPorId}
+                    onAbrirTarea={(t) => setTareaAbierta({ tarea: t })}
+                    onNuevaTarea={(c) => setTareaAbierta({ cliente: c.id ? c : null })}
+                    onAbrirDia={(c, dia) => setCalendario({ cliente: c, dia })}
+                    onMarcarHecha={(t) => cambiarEstado.mutate({ id: t.id, estado: 'hecha' })}
+                  />
+                ))}
               </div>
-              {col.tareas.length === 0 ? <div className="board-empty">Sin tareas</div> : null}
-              {col.tareas.map((t) => (
-                <div key={t.id} className={`task-card${t.vencida ? ' task-card--late' : ''}`}>
-                  <div className="task-card-top">
-                    {t.cliente_nombre ? (
-                      <span className="task-card-cliente" title={t.cliente_nombre}>
-                        <span className="cat-dot" style={{ background: t.cliente_color }} />
-                        {t.cliente_nombre}
-                      </span>
-                    ) : (
-                      <span className="task-card-cliente">Interna</span>
-                    )}
-                    <Tag color={PRIORIDADES.find((p) => p.value === t.prioridad)?.tag}>{labelDe(PRIORIDADES, t.prioridad)}</Tag>
-                  </div>
-                  <div className="task-card-title">
-                    {t.titulo}
-                    {t.notion_url ? (
-                      <a className="task-card-notion" href={t.notion_url} target="_blank" rel="noreferrer" title="Abrir en Notion" aria-label="Abrir en Notion">
-                        ↗
-                      </a>
-                    ) : null}
-                  </div>
-                  {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
-                  <div className="task-card-meta">
-                    <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatFechaCorta(t.fecha_limite)}` : 'Sin fecha'}</span>
-                    {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
-                  </div>
-                  {t.puede_editar ? (
-                    <div className="task-card-actions">
-                      <select className="select-sm" aria-label="Cambiar estado" value={t.estado} onChange={(e) => cambiarEstado.mutate({ id: t.id, estado: e.target.value })}>
-                        {ESTADOS_TAREA.map((s) => (
-                          <option key={s.value} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(t)}>
-                        Editar
-                      </button>
-                      {esAdmin ? (
-                        <button
-                          type="button"
-                          className="btn btn-danger btn-xs"
-                          aria-label="Eliminar tarea"
-                          onClick={async () => (await confirmar({ mensaje: `¿Eliminar «${t.titulo}»?`, peligro: true, confirmar: 'Eliminar' })) && borrar.mutate(t.id)}
-                        >
-                          🗑
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
+            </>
+          )
+        }
       </QueryState>
-      {editando ? (
-        <TareaForm
-          inicial={editando.id ? editando : null}
-          puedeReasignar={esAdmin || !editando.id || editando.creado_por === me?.id}
-          onClose={() => setEditando(null)}
+
+      {evento ? (
+        <EventoForm inicial={evento.inicial} dia={evento.dia} cliente={evento.cliente?.id ? evento.cliente : null} onClose={() => setEvento(null)} />
+      ) : tareaAbierta ? (
+        <TareaSheet tarea={tareaAbierta.tarea} cliente={tareaAbierta.cliente} onClose={() => setTareaAbierta(null)} />
+      ) : calendario ? (
+        <CalendarioCliente
+          key={`${calendario.cliente.id ?? 'interno'}-${calendario.dia}`}
+          cliente={calendario.cliente}
+          diaInicial={calendario.dia}
+          tareas={tareasDeCalendario}
+          onClose={() => setCalendario(null)}
+          onNuevoEvento={(dia) => {
+            setCalendario((c) => ({ ...c, dia }))
+            setEvento({ dia, cliente: calendario.cliente })
+          }}
+          onAbrirEvento={(e) => {
+            setCalendario((c) => ({ ...c, dia: diaDe(e.inicio) }))
+            setEvento({ inicial: e, dia: diaDe(e.inicio), cliente: calendario.cliente })
+          }}
+          onAbrirTarea={(t) => {
+            setCalendario((c) => ({ ...c, dia: t.fecha_limite }))
+            setTareaAbierta({ tarea: t })
+          }}
         />
       ) : null}
     </>

@@ -40,6 +40,12 @@ class PersonaViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def perform_update(self, serializer):
+        antes = serializer.instance.notion_user_id
+        persona = serializer.save()
+        if persona.notion_user_id != antes:
+            notion.al_vincular_persona(persona)
+
     def destroy(self, request, *args, **kwargs):
         persona = self.get_object()
         if persona.liquidaciones.exists():

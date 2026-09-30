@@ -20,6 +20,7 @@ from datetime import timedelta
 import httpx
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.clientes.models import Cliente
@@ -221,6 +222,11 @@ def al_guardar_tarea(tarea: Tarea):
         _seguro(enviar_tarea, tarea)
 
 
+def al_vincular_persona(persona: Persona):
+    if configurado():
+        _seguro(reenviar_tareas, Q(asignaciones__persona=persona))
+
+
 def al_borrar_tarea(page_id):
     if configurado() and page_id:
         _seguro(lambda: _request('PATCH', f'/pages/{page_id}', {'in_trash': True}))
@@ -229,8 +235,11 @@ def al_borrar_tarea(page_id):
 # --- Notion → Panel --------------------------------------------------------------------------------------------------
 
 
-def aplicar_pagina(page, candidatos=None):
-    """Aplica una página de la base Tareas al panel. Devuelve 'creada', 'actualizada', 'vinculada', 'borrada' o None."""
+def aplicar_pagina(page, candidatos=None, forzar_clientes=()):
+    """Aplica una página de la base Tareas al panel. Devuelve 'creada', 'actualizada', 'vinculada', 'borrada' o None.
+
+    `forzar_clientes`: páginas de clientes recién vinculados; sus tareas se reaplican aunque la huella no cambie.
+    """
     pid = _norm(page['id'])
     tarea = Tarea.objects.filter(notion_page_id=pid).first()
     if page.get('in_trash') or page.get('archived'):
@@ -242,7 +251,8 @@ def aplicar_pagina(page, candidatos=None):
     if not datos['titulo']:
         return None
     huella = _huella(datos)
-    if tarea and tarea.notion_huella == huella:
+    forzada = bool(datos['cliente']) and datos['cliente'][0] in forzar_clientes
+    if tarea and tarea.notion_huella == huella and not forzada:
         return None
 
     resultado = 'actualizada'
@@ -265,7 +275,9 @@ def aplicar_pagina(page, candidatos=None):
         tarea.prioridad = datos['prioridad']
         tarea.fecha_limite = datos['fecha_limite']
         if not datos['cliente']:
-            tarea.cliente = None
+            # Un cliente del panel sin página en Notion no se puede representar allá: no se pierde por eso.
+            if tarea.cliente_id is None or tarea.cliente.notion_page_id:
+                tarea.cliente = None
         else:
             cliente = Cliente.objects.filter(notion_page_id=datos['cliente'][0]).first()
             if cliente:
@@ -326,7 +338,7 @@ def usuarios():
 def vincular_clientes() -> dict:
     libres = {_clave(c.nombre): c for c in Cliente.objects.filter(notion_page_id__isnull=True)}
     ya = set(Cliente.objects.exclude(notion_page_id=None).values_list('notion_page_id', flat=True))
-    vinculados, sin_panel = 0, []
+    nuevos, sin_panel = [], []
     for page in _consultar(settings.NOTION_CLIENTES_DS):
         pid = _norm(page['id'])
         if pid in ya or page.get('in_trash'):
@@ -335,16 +347,30 @@ def vincular_clientes() -> dict:
         cliente = libres.pop(_clave(nombre), None)
         if cliente:
             Cliente.objects.filter(pk=cliente.pk).update(notion_page_id=pid)
-            vinculados += 1
+            nuevos.append(pid)
         elif nombre:
             sin_panel.append(nombre)
-    return {'vinculados': vinculados, 'solo_en_notion': sin_panel, 'solo_en_panel': sorted(c.nombre for c in libres.values())}
+    return {
+        'vinculados': len(nuevos),
+        'nuevos': nuevos,
+        'solo_en_notion': sin_panel,
+        'solo_en_panel': sorted(c.nombre for c in libres.values() if c.estado != 'baja'),
+    }
 
 
-def vincular_personas() -> int:
+def reenviar_tareas(filtro) -> int:
+    """Vuelve a enviar a Notion tareas ya vinculadas (p. ej. tras vincular su cliente o una persona)."""
+    n = 0
+    for tarea in Tarea.objects.filter(filtro).exclude(notion_page_id=None).select_related('cliente').distinct():
+        enviar_tarea(tarea)
+        n += 1
+    return n
+
+
+def vincular_personas() -> list:
     lista = usuarios()
     usados = set(Persona.objects.exclude(notion_user_id='').values_list('notion_user_id', flat=True))
-    vinculadas = 0
+    vinculadas = []
     for persona in Persona.objects.filter(notion_user_id='', activo=True):
         clave = _clave(persona.nombre)
         primer = _clave(persona.nombre.split()[0]) if persona.nombre.split() else ''
@@ -355,7 +381,7 @@ def vincular_personas() -> int:
         if len(opciones) == 1:
             Persona.objects.filter(pk=persona.pk).update(notion_user_id=opciones[0]['id'])
             usados.add(opciones[0]['id'])
-            vinculadas += 1
+            vinculadas.append(persona.pk)
     return vinculadas
 
 
@@ -369,10 +395,16 @@ def sincronizar(completa=False) -> dict:
         return {'omitida': True}
 
     resumen = {'creadas': 0, 'actualizadas': 0, 'vinculadas': 0, 'borradas': 0, 'enviadas': 0}
+    forzar_clientes = set()
     try:
         if completa:
-            resumen['clientes'] = vincular_clientes()
-            resumen['personas_vinculadas'] = vincular_personas()
+            clientes = vincular_clientes()
+            forzar_clientes = set(clientes.pop('nuevos'))
+            personas = vincular_personas()
+            resumen['clientes'] = clientes
+            resumen['personas_vinculadas'] = len(personas)
+            # Lo que el panel ya tenía de esos clientes/personas tiene que llegar a Notion antes de leerlo de vuelta.
+            reenviar_tareas(Q(cliente__notion_page_id__in=forzar_clientes) | Q(asignaciones__persona_id__in=personas))
         filtro = None
         if not completa and estado.ultima_sync:
             desde = estado.ultima_sync - timedelta(minutes=5)
@@ -382,7 +414,7 @@ def sincronizar(completa=False) -> dict:
         vistas = set()
         for page in _consultar(settings.NOTION_TAREAS_DS, filtro):
             vistas.add(_norm(page['id']))
-            r = aplicar_pagina(page, candidatos)
+            r = aplicar_pagina(page, candidatos, forzar_clientes)
             if r:
                 resumen[{'creada': 'creadas', 'actualizada': 'actualizadas', 'vinculada': 'vinculadas', 'borrada': 'borradas'}[r]] += 1
 

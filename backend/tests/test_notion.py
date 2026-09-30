@@ -134,6 +134,39 @@ def test_sincronizacion_completa_vincula_y_trae_de_notion(api_client, falso, per
 
 
 @pytest.mark.django_db
+def test_cliente_vinculado_despues_actualiza_tareas_de_ambos_lados(api_client, falso):
+    lennon = Cliente.objects.create(nombre='Redes Lennon')
+    cid = falso.agregar(CLIENTES_DS, {'Cliente': {'title': [{'text': {'content': 'Lennon'}}]}})
+    falso.agregar(TAREAS_DS, _props_tarea('Grilla Lennon', cliente=cid))
+    del_panel = Tarea.objects.create(titulo='Reel Lennon', cliente=lennon)
+
+    r = api_client.post('/api/notion/sincronizar/', {'completa': True}, format='json')
+    assert r.data['clientes']['solo_en_panel'] == ['Redes Lennon']
+    del_panel.refresh_from_db()
+    assert del_panel.cliente == lennon
+    assert falso.paginas[del_panel.notion_page_id]['properties']['Cliente']['relation'] == []
+    assert Tarea.objects.get(titulo='Grilla Lennon').cliente is None
+
+    lennon.nombre = 'Lennon'
+    lennon.save()
+    r = api_client.post('/api/notion/sincronizar/', {'completa': True}, format='json')
+    assert r.data['clientes']['vinculados'] == 1
+    assert falso.paginas[del_panel.notion_page_id]['properties']['Cliente']['relation'] == [{'id': cid}]
+    assert Tarea.objects.get(titulo='Grilla Lennon').cliente == lennon
+    del_panel.refresh_from_db()
+    assert del_panel.cliente == lennon
+
+
+@pytest.mark.django_db
+def test_vincular_persona_a_mano_reenvia_sus_tareas(api_client, falso, persona):
+    r = api_client.post('/api/tareas/', {'titulo': 'Edición', 'asignados': [persona.id]}, format='json')
+    page = falso.paginas[Tarea.objects.get(pk=r.data['id']).notion_page_id]
+    assert page['properties']['Responsable']['people'] == []
+    assert api_client.patch(f'/api/personal/{persona.id}/', {'notion_user_id': UID_LAU}, format='json').status_code == 200
+    assert page['properties']['Responsable']['people'] == [{'id': UID_LAU}]
+
+
+@pytest.mark.django_db
 def test_incremental_se_limita_y_la_puede_pedir_el_equipo(equipo_client, falso):
     falso.agregar(TAREAS_DS, _props_tarea('Algo'))
     assert equipo_client.post('/api/notion/sincronizar/', {'completa': True}, format='json').data['creadas'] == 1

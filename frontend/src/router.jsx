@@ -24,6 +24,7 @@ const Suscripciones = lazy(() => import('./pages/Suscripciones'))
 const Tareas = lazy(() => import('./pages/Tareas'))
 
 const admin = (el) => <RequireAdmin>{el}</RequireAdmin>
+const conPermiso = (permiso, el) => <RequireAdmin permiso={permiso}>{el}</RequireAdmin>
 
 const redirecciones = {
   ingresos: '/movimientos',
@@ -49,8 +50,8 @@ const router = createBrowserRouter([
       { path: 'calendario', element: <Calendario /> },
       { path: 'config', element: <Config /> },
       { path: 'pagos-equipo/:id/recibo', element: <Recibo /> },
-      { path: 'clientes', element: admin(<Clientes />) },
-      { path: 'clientes/:id', element: admin(<ClienteDetalle />) },
+      { path: 'clientes', element: conPermiso('clientes', <Clientes />) },
+      { path: 'clientes/:id', element: conPermiso('clientes', <ClienteDetalle />) },
       { path: 'clientes/:id/reporte', element: admin(<ClienteReporte />) },
       { path: 'cobros', element: admin(<Cobros />) },
       { path: 'movimientos', element: admin(<Movimientos />) },
@@ -58,7 +59,7 @@ const router = createBrowserRouter([
       { path: 'equipo', element: admin(<Equipo />) },
       { path: 'pagos-equipo', element: admin(<PagosEquipo />) },
       { path: 'gmail', element: admin(<Gmail />) },
-      { path: 'estadisticas', element: admin(<Estadisticas />) },
+      { path: 'estadisticas', element: conPermiso('estadisticas', <Estadisticas />) },
       ...Object.entries(redirecciones).map(([path, to]) => ({ path, element: <Navigate to={to} replace /> })),
     ],
   },

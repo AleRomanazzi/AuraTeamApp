@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
-import AURA_LOGO from '../../assets/auraLogoSrc'
-import { useMe } from '../../hooks/useData'
+import AURA_LOGO from '../../assets/logo-aura.png'
+import { puede, useMe } from '../../hooks/useData'
+import { nombreRoles } from '../../lib/constants'
 
 const NAV_ADMIN = [
   { section: 'Principal', items: [{ to: '/', icon: '📊', label: 'Dashboard' }] },
@@ -37,30 +38,40 @@ const NAV_ADMIN = [
   { section: 'Sistema', items: [{ to: '/config', icon: '⚙️', label: 'Configuración' }] },
 ]
 
-const NAV_EQUIPO = [
-  {
-    section: 'Mi trabajo',
-    items: [
-      { to: '/', icon: '🏠', label: 'Mi panel' },
-      { to: '/tareas', icon: '✅', label: 'Mis tareas' },
-      { to: '/calendario', icon: '📅', label: 'Calendario' },
-    ],
-  },
-  { section: 'Cuenta', items: [{ to: '/config', icon: '⚙️', label: 'Mi cuenta' }] },
-]
+function navEquipo(me) {
+  const clientes = [
+    puede(me, 'clientes') && { to: '/clientes', icon: '🏷️', label: 'Clientes' },
+    puede(me, 'estadisticas') && { to: '/estadisticas', icon: '📈', label: 'Estadísticas' },
+  ].filter(Boolean)
+  return [
+    {
+      section: 'Mi trabajo',
+      items: [
+        { to: '/', icon: '🏠', label: 'Mi panel' },
+        { to: '/tareas', icon: '✅', label: 'Tareas' },
+        { to: '/calendario', icon: '📅', label: 'Calendario' },
+      ],
+    },
+    ...(clientes.length ? [{ section: 'Clientes', items: clientes }] : []),
+    { section: 'Cuenta', items: [{ to: '/config', icon: '⚙️', label: 'Mi cuenta' }] },
+  ]
+}
 
 export default function Sidebar({ sidebarOpen, onClose }) {
   const { data: me } = useMe()
-  const nav = me?.es_admin ? NAV_ADMIN : NAV_EQUIPO
+  const nav = !me ? [] : me.es_admin ? NAV_ADMIN : navEquipo(me)
 
   return (
     <aside id="sidebar" className={sidebarOpen ? 'open' : ''} aria-label="Navegación principal">
       <div className="logo">
         <img className="logo-img" src={AURA_LOGO} alt="" />
         <div className="logo-text">
-          <h1>Aura Team</h1>
-          <span>Centro de Control</span>
+          <h1>AuraTeam</h1>
+          <span>Centro de control</span>
         </div>
+        <button type="button" className="sidebar-close" aria-label="Cerrar menú" onClick={() => onClose?.()}>
+          ×
+        </button>
       </div>
       <nav>
         {nav.map((block) => (
@@ -87,7 +98,7 @@ export default function Sidebar({ sidebarOpen, onClose }) {
         <div className="sidebar-footer">
           <div className="sidebar-user">
             <strong>{me.persona_nombre || me.first_name || me.username}</strong>
-            <span>{me.es_admin ? 'Administrador' : 'Equipo'}</span>
+            <span>{nombreRoles(me)}</span>
           </div>
         </div>
       ) : null}

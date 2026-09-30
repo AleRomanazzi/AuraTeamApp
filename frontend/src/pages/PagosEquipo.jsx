@@ -490,7 +490,7 @@ export default function PagosEquipo() {
                     ) : null}
                   </div>
                 </div>
-                <div className="table-responsive">
+                <div className="table-responsive tabla-apilada">
                   <table>
                     <tbody>
                       {p.liqs.map((l) => {
@@ -498,7 +498,7 @@ export default function PagosEquipo() {
                         const porPiezaSinCargar = l.modalidad === 'por_pieza' && num(l.total) === 0
                         return (
                           <tr key={l.id} className={l.estado === 'anulada' ? 'row-muted' : ''}>
-                            <td>
+                            <td className="celda-principal">
                               <div className="cell-title">{l.concepto}</div>
                               <div className="cell-sub">
                                 {l.modalidad ? labelDe(MODALIDADES, l.modalidad) : l.origen === 'base' ? 'Honorario base' : l.cliente ? 'Reparto de cobro' : 'Pago suelto'}
@@ -507,8 +507,10 @@ export default function PagosEquipo() {
                                 {porPiezaSinCargar ? <span className="down"> · cargá las piezas</span> : null}
                               </div>
                             </td>
-                            <td className="num mono nowrap">{fmt(l.total)}</td>
-                            <td>
+                            <td className="num mono nowrap" data-label="Total">
+                              {fmt(l.total)}
+                            </td>
+                            <td data-label="Estado">
                               <Tag color={est?.tag}>{est?.label}</Tag>
                             </td>
                             <td className="nowrap actions-cell">

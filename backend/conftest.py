@@ -40,13 +40,26 @@ def persona(db):
 @pytest.fixture
 def equipo_user(db, persona):
     User = get_user_model()
-    return User.objects.create_user(username='equipo', password='testpass1234', rol='equipo', persona=persona)
+    return User.objects.create_user(username='equipo', password='testpass1234', rol='equipo', roles=['editor'], persona=persona)
 
 
 @pytest.fixture
 def equipo_client(equipo_user):
     client = APIClient()
     client.force_authenticate(user=equipo_user)
+    return client
+
+
+@pytest.fixture
+def cm_client(db):
+    from apps.equipo.models import Persona
+
+    User = get_user_model()
+    cm = User.objects.create_user(
+        username='cm', password='testpass1234', rol='equipo', roles=['cm'], persona=Persona.objects.create(nombre='Caro')
+    )
+    client = APIClient()
+    client.force_authenticate(user=cm)
     return client
 
 

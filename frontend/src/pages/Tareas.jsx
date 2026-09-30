@@ -5,7 +5,7 @@ import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
 import Tag from '../components/ui/Tag'
-import { useClientes, useEsAdmin, usePersonas } from '../hooks/useData'
+import { useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { ESTADOS_TAREA, PRIORIDADES, labelDe } from '../lib/constants'
 import { formatFechaCorta } from '../lib/format'
@@ -15,7 +15,7 @@ import { confirmar } from '../store/confirmStore'
 
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
 
-function TareaForm({ inicial, onClose }) {
+function TareaForm({ inicial, puedeReasignar, onClose }) {
   const qc = useQueryClient()
   const { data: clientes = [] } = useClientes()
   const { data: personas = [] } = usePersonas()
@@ -104,12 +104,19 @@ function TareaForm({ inicial, onClose }) {
           </select>
         </Field>
       </div>
-      <Field label="Responsables">
+      <Field label="Responsables" hint={puedeReasignar ? (inicial?.id ? null : 'Si no elegís a nadie, la tarea queda a tu nombre.') : 'Solo quien creó la tarea o un administrador puede cambiar los responsables.'}>
         <div className="chip-select">
           {personas
             .filter((p) => p.activo || f.asignados.includes(p.id))
             .map((p) => (
-              <button key={p.id} type="button" className={`chip${f.asignados.includes(p.id) ? ' active' : ''}`} onClick={() => toggle(p.id)} aria-pressed={f.asignados.includes(p.id)}>
+              <button
+                key={p.id}
+                type="button"
+                className={`chip${f.asignados.includes(p.id) ? ' active' : ''}`}
+                onClick={() => toggle(p.id)}
+                aria-pressed={f.asignados.includes(p.id)}
+                disabled={!puedeReasignar}
+              >
                 {p.nombre}
               </button>
             ))}
@@ -121,13 +128,15 @@ function TareaForm({ inicial, onClose }) {
 
 export default function Tareas() {
   const qc = useQueryClient()
-  const esAdmin = useEsAdmin()
+  const { data: me } = useMe()
+  const esAdmin = Boolean(me?.es_admin)
   const { data: clientes = [] } = useClientes()
   const { data: personas = [] } = usePersonas()
   const [cliente, setCliente] = useState('')
   const [persona, setPersona] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [editando, setEditando] = useState(null)
+  const [vista, setVista] = useState('pendiente')
   const params = { cliente: cliente || undefined, persona: persona || undefined }
   const q = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
   // Respaldo del webhook: trae lo editado en Notion al abrir la pantalla (el servidor lo limita a una vez por minuto).
@@ -173,12 +182,10 @@ export default function Tareas() {
 
   return (
     <>
-      <PageHeader titulo={esAdmin ? 'Tareas' : 'Mis tareas'} subtitulo={esAdmin ? 'Qué hay que hacer, para quién y para cuándo' : 'Actualizá el estado a medida que avanzás'}>
-        {esAdmin ? (
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditando({})}>
-            + Nueva tarea
-          </button>
-        ) : null}
+      <PageHeader titulo="Tareas" subtitulo={esAdmin ? 'Qué hay que hacer, para quién y para cuándo' : 'Las de todo el equipo; editás las tuyas'}>
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditando({})}>
+          + Nueva tarea
+        </button>
       </PageHeader>
       <div className="filters">
         <input type="search" placeholder="Buscar…" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar tareas" />
@@ -190,35 +197,44 @@ export default function Tareas() {
             </option>
           ))}
         </select>
-        {esAdmin ? (
-          <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Persona">
-            <option value="">Todo el equipo</option>
-            {personas.map((p) => (
+        <select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Persona">
+          <option value="">Todo el equipo</option>
+          {me?.persona ? <option value={me.persona}>Mis tareas</option> : null}
+          {personas
+            .filter((p) => p.id !== me?.persona)
+            .map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nombre}
               </option>
             ))}
-          </select>
-        ) : null}
+        </select>
       </div>
-      <QueryState query={q} vacio={esAdmin ? 'No hay tareas. Creá la primera.' : 'No tenés tareas asignadas.'}>
+      <QueryState query={q} vacio="No hay tareas. Creá la primera.">
+        <div className="board-switch" role="tablist" aria-label="Estado">
+          {columnas.map((col) => (
+            <button key={col.value} type="button" role="tab" aria-selected={vista === col.value} className={`chip${vista === col.value ? ' active' : ''}`} onClick={() => setVista(col.value)}>
+              {col.label} <b>{col.tareas.length}</b>
+            </button>
+          ))}
+        </div>
         <div className="board">
           {columnas.map((col) => (
-            <div key={col.value} className="board-col">
+            <div key={col.value} className={`board-col${vista === col.value ? ' board-col--visible' : ''}`}>
               <div className="board-col-head">
                 <Tag color={col.tag}>{col.label}</Tag>
-                <span className="muted small">{col.tareas.length}</span>
+                <span className="board-col-count">{col.tareas.length}</span>
               </div>
+              {col.tareas.length === 0 ? <div className="board-empty">Sin tareas</div> : null}
               {col.tareas.map((t) => (
                 <div key={t.id} className={`task-card${t.vencida ? ' task-card--late' : ''}`}>
                   <div className="task-card-top">
                     {t.cliente_nombre ? (
-                      <span className="small">
+                      <span className="task-card-cliente" title={t.cliente_nombre}>
                         <span className="cat-dot" style={{ background: t.cliente_color }} />
                         {t.cliente_nombre}
                       </span>
                     ) : (
-                      <span className="small muted">Interna</span>
+                      <span className="task-card-cliente">Interna</span>
                     )}
                     <Tag color={PRIORIDADES.find((p) => p.value === t.prioridad)?.tag}>{labelDe(PRIORIDADES, t.prioridad)}</Tag>
                   </div>
@@ -231,25 +247,23 @@ export default function Tareas() {
                     ) : null}
                   </div>
                   {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
-                  <div className="task-card-foot">
-                    <span className={`small ${t.vencida ? 'down' : 'muted'}`}>
-                      {t.fecha_limite ? `${t.vencida ? '⚠ ' : ''}${formatFechaCorta(t.fecha_limite)}` : 'Sin fecha'}
-                      {t.asignados_nombres.length ? ` · ${t.asignados_nombres.join(', ')}` : ''}
-                    </span>
+                  <div className="task-card-meta">
+                    <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatFechaCorta(t.fecha_limite)}` : 'Sin fecha'}</span>
+                    {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
                   </div>
-                  <div className="task-card-actions">
-                    <select className="select-sm" aria-label="Cambiar estado" value={t.estado} onChange={(e) => cambiarEstado.mutate({ id: t.id, estado: e.target.value })}>
-                      {ESTADOS_TAREA.map((s) => (
-                        <option key={s.value} value={s.value}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                    {esAdmin ? (
-                      <>
-                        <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(t)}>
-                          Editar
-                        </button>
+                  {t.puede_editar ? (
+                    <div className="task-card-actions">
+                      <select className="select-sm" aria-label="Cambiar estado" value={t.estado} onChange={(e) => cambiarEstado.mutate({ id: t.id, estado: e.target.value })}>
+                        {ESTADOS_TAREA.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(t)}>
+                        Editar
+                      </button>
+                      {esAdmin ? (
                         <button
                           type="button"
                           className="btn btn-danger btn-xs"
@@ -258,16 +272,22 @@ export default function Tareas() {
                         >
                           🗑
                         </button>
-                      </>
-                    ) : null}
-                  </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
           ))}
         </div>
       </QueryState>
-      {editando ? <TareaForm inicial={editando.id ? editando : null} onClose={() => setEditando(null)} /> : null}
+      {editando ? (
+        <TareaForm
+          inicial={editando.id ? editando : null}
+          puedeReasignar={esAdmin || !editando.id || editando.creado_por === me?.id}
+          onClose={() => setEditando(null)}
+        />
+      ) : null}
     </>
   )
 }

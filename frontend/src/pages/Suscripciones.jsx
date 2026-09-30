@@ -252,7 +252,7 @@ export default function Suscripciones() {
       </div>
       <div className="card" style={{ marginTop: 16 }}>
         <QueryState query={q} vacio="No hay suscripciones cargadas.">
-          <div className="table-responsive">
+          <div className="table-responsive tabla-apilada">
             <table>
               <thead>
                 <tr>
@@ -267,7 +267,7 @@ export default function Suscripciones() {
               <tbody>
                 {lista.map((s) => (
                   <tr key={s.id} className={s.activo ? '' : 'row-muted'}>
-                    <td>
+                    <td className="celda-principal">
                       <div className="cell-title">{s.nombre}</div>
                       <div className="cell-sub">
                         {labelDe(PERIODICIDADES, s.periodicidad)} · día {s.dia_vencimiento}
@@ -275,10 +275,16 @@ export default function Suscripciones() {
                         {s.detalle.length ? ` · compartida (${s.detalle.map((d) => d.nombre).join(', ')})` : ''}
                       </div>
                     </td>
-                    <td className="num mono">{fmt(s.monto_total)}</td>
-                    <td className="num mono">{fmt(s.monto_agencia)}</td>
-                    <td className="num mono">{fmtCorto(s.equivalente_mensual)}</td>
-                    <td>
+                    <td className="num mono" data-label="Total">
+                      {fmt(s.monto_total)}
+                    </td>
+                    <td className="num mono" data-label="Paga la agencia">
+                      {fmt(s.monto_agencia)}
+                    </td>
+                    <td className="num mono" data-label="Por mes">
+                      {fmtCorto(s.equivalente_mensual)}
+                    </td>
+                    <td data-label={monthLabel(mes, { month: 'short' })}>
                       {!s.activo ? (
                         <Tag>Inactiva</Tag>
                       ) : !s.generar_egreso ? (
@@ -289,7 +295,7 @@ export default function Suscripciones() {
                         <Tag color="yellow">Pendiente</Tag>
                       )}
                     </td>
-                    <td className="nowrap">
+                    <td className="nowrap actions-cell">
                       <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(s)}>
                         Editar
                       </button>{' '}

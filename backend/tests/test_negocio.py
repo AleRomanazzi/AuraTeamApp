@@ -197,19 +197,60 @@ def test_rol_equipo_no_ve_finanzas(equipo_client):
 
 
 @pytest.mark.django_db
-def test_rol_equipo_ve_solo_sus_tareas_y_cambia_estado(equipo_client, persona, cliente):
+def test_rol_equipo_ve_todas_las_tareas_y_edita_las_suyas(equipo_client, equipo_user, persona, cliente):
+    from apps.equipo.models import Persona
+
+    otra = Persona.objects.create(nombre='Otra')
     mia = Tarea.objects.create(titulo='Mía', cliente=cliente)
     mia.asignaciones.create(persona=persona)
-    Tarea.objects.create(titulo='Ajena')
-    data = equipo_client.get('/api/tareas/').data
-    assert [t['titulo'] for t in data] == ['Mía']
-    assert equipo_client.patch(f'/api/tareas/{mia.id}/', {'estado': 'hecha'}, format='json').status_code == 200
-    assert equipo_client.patch(f'/api/tareas/{mia.id}/', {'titulo': 'X'}, format='json').status_code == 403
-    assert equipo_client.post('/api/tareas/', {'titulo': 'Nueva'}, format='json').status_code == 403
+    ajena = Tarea.objects.create(titulo='Ajena')
+    ajena.asignaciones.create(persona=otra)
+    data = {t['titulo']: t for t in equipo_client.get('/api/tareas/').data}
+    assert set(data) == {'Mía', 'Ajena'}
+    assert data['Mía']['puede_editar'] and not data['Ajena']['puede_editar']
+
+    assert equipo_client.patch(f'/api/tareas/{mia.id}/', {'estado': 'hecha', 'titulo': 'Mía 2'}, format='json').status_code == 200
+    assert equipo_client.patch(f'/api/tareas/{ajena.id}/', {'estado': 'hecha'}, format='json').status_code == 403
+    assert equipo_client.patch(f'/api/tareas/{mia.id}/', {'asignados': [otra.id]}, format='json').status_code == 403
+    assert equipo_client.delete(f'/api/tareas/{mia.id}/').status_code == 403
+
+    r = equipo_client.post('/api/tareas/', {'titulo': 'Nueva'}, format='json')
+    assert r.status_code == 201 and r.data['asignados'] == [persona.id] and r.data['creado_por'] == equipo_user.id
+    r = equipo_client.patch(f'/api/tareas/{r.data["id"]}/', {'asignados': [persona.id, otra.id]}, format='json')
+    assert r.status_code == 200, r.data
+
     clientes = equipo_client.get('/api/clientes/').data
     assert set(clientes[0].keys()) == {'id', 'nombre', 'color', 'estado'}
     panel = equipo_client.get('/api/mi-panel/').data
     assert panel['persona']['nombre'] == persona.nombre
+
+
+@pytest.mark.django_db
+def test_rol_cm_ve_fichas_de_clientes_y_estadisticas(cm_client, equipo_client, cliente):
+    ficha = cm_client.get(f'/api/clientes/{cliente.id}/').data
+    assert 'contacto' in ficha and 'notas' in ficha
+    assert not {'deuda', 'fee_mensual', 'cuit', 'razon_social'} & set(ficha)
+    assert cm_client.get('/api/stats/').status_code == 200
+    assert cm_client.get(f'/api/clientes/{cliente.id}/evolucion/').status_code == 200
+    for url in (f'/api/clientes/{cliente.id}/rentabilidad/', f'/api/clientes/{cliente.id}/reporte/', '/api/cobros/', '/api/contratos/'):
+        assert cm_client.get(url).status_code == 403, url
+    assert cm_client.patch(f'/api/clientes/{cliente.id}/', {'nombre': 'X'}, format='json').status_code == 403
+    assert equipo_client.get('/api/stats/').status_code == 403
+    assert equipo_client.get(f'/api/clientes/{cliente.id}/evolucion/').status_code == 403
+    assert cm_client.get('/api/auth/me/').data['permisos'] == ['clientes', 'estadisticas']
+    assert equipo_client.get('/api/auth/me/').data['permisos'] == []
+
+
+@pytest.mark.django_db
+def test_eventos_solo_los_edita_quien_los_creo(api_client, equipo_client, cm_client):
+    evento = {'titulo': 'Rodaje', 'inicio': '2026-10-01T10:00:00-03:00'}
+    propio = equipo_client.post('/api/cal-eventos/', evento, format='json')
+    assert propio.status_code == 201 and propio.data['puede_editar']
+    del_admin = api_client.post('/api/cal-eventos/', evento, format='json').data
+    assert cm_client.patch(f'/api/cal-eventos/{propio.data["id"]}/', {'titulo': 'X'}, format='json').status_code == 403
+    assert equipo_client.delete(f'/api/cal-eventos/{del_admin["id"]}/').status_code == 403
+    assert equipo_client.patch(f'/api/cal-eventos/{propio.data["id"]}/', {'titulo': 'Rodaje 2'}, format='json').status_code == 200
+    assert api_client.delete(f'/api/cal-eventos/{propio.data["id"]}/').status_code == 204
 
 
 @pytest.mark.django_db
@@ -225,9 +266,15 @@ def test_rol_equipo_ve_solo_sus_liquidaciones(equipo_client, persona):
 
 @pytest.mark.django_db
 def test_usuarios_admin(api_client, user, persona):
-    r = api_client.post('/api/usuarios/', {'username': 'nuevo', 'password': 'Clave-Segura-123', 'rol': 'equipo', 'persona': persona.id}, format='json')
+    base = {'username': 'nuevo', 'password': 'Clave-Segura-123', 'rol': 'equipo', 'persona': persona.id}
+    assert api_client.post('/api/usuarios/', base, format='json').status_code == 400
+    assert api_client.post('/api/usuarios/', {**base, 'roles': ['cm', 'jefe']}, format='json').status_code == 400
+    r = api_client.post('/api/usuarios/', {**base, 'roles': ['foto', 'disenio']}, format='json')
     assert r.status_code == 201, r.data
-    r = api_client.patch(f'/api/usuarios/{user.id}/', {'rol': 'equipo'}, format='json')
+    assert r.data['roles'] == ['foto', 'disenio']
+    r = api_client.patch(f'/api/usuarios/{r.data["id"]}/', {'rol': 'admin'}, format='json')
+    assert r.status_code == 200 and r.data['roles'] == []
+    r = api_client.patch(f'/api/usuarios/{user.id}/', {'rol': 'equipo', 'roles': ['cm']}, format='json')
     assert r.status_code == 400
 
 

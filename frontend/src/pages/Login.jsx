@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import AURA_LOGO from '../assets/auraLogoSrc'
+import AURA_LOGO from '../assets/logo-aura.png'
 import { api } from '../lib/api'
 import { apiErrorMessage } from '../lib/errors'
 import { useAuthStore } from '../store/authStore'
@@ -40,9 +40,9 @@ export default function Login() {
     <div className="login-wrap">
       <div className="card login-card">
         <div className="login-head">
-          <img src={AURA_LOGO} alt="" className="logo-img" style={{ width: 56, height: 56 }} />
+          <img src={AURA_LOGO} alt="" className="logo-img" />
+          <p>AuraTeam · Centro de control</p>
           <h2>Iniciar sesión</h2>
-          <p>Aura Team — Centro de Control</p>
         </div>
         <form onSubmit={onSubmit}>
           <div className="form-row">

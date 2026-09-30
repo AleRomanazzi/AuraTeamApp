@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import permissions, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,8 +9,18 @@ from .models import EventoUnico
 from .serializers import EventoUnicoSerializer
 
 
+class EventoPermission(permissions.IsAuthenticated):
+    message = 'Solo podés editar los eventos que creaste.'
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS or es_admin(request.user):
+            return True
+        return obj.user_id is not None and obj.user_id == request.user.id
+
+
 class EventoUnicoViewSet(viewsets.ModelViewSet):
     serializer_class = EventoUnicoSerializer
+    permission_classes = [EventoPermission]
     pagination_class = None
 
     def get_queryset(self):

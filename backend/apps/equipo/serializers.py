@@ -5,9 +5,17 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.clientes.models import Cliente
+from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Tarea
+
+
+def es_tarea_propia(user, tarea) -> bool:
+    if tarea.user_id is not None and tarea.user_id == user.id:
+        return True
+    persona = persona_de(user)
+    return persona is not None and any(a.persona_id == persona.id for a in tarea.asignaciones.all())
 
 
 class TareaSerializer(serializers.ModelSerializer):
@@ -24,10 +32,19 @@ class TareaSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
             'fecha_limite', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado', 'notion_url',
+            'creado_por', 'puede_editar',
         )
         read_only_fields = ('id', 'completada_en', 'creado')
 
     notion_url = serializers.SerializerMethodField()
+    creado_por = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
+    puede_editar = serializers.SerializerMethodField()
+
+    def get_puede_editar(self, obj):
+        request = self.context.get('request')
+        if request is None:
+            return False
+        return es_admin(request.user) or es_tarea_propia(request.user, obj)
 
     def get_notion_url(self, obj):
         return f'https://www.notion.so/{obj.notion_page_id.replace("-", "")}' if obj.notion_page_id else None

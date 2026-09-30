@@ -26,7 +26,14 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
-      <Toaster position="top-right" toastOptions={{ style: { background: 'var(--surface, #1a1a24)', color: 'var(--text, #fff)', border: '1px solid var(--border, #333)' } }} />
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border-strong)', borderRadius: '12px', fontSize: '14px', maxWidth: 'min(460px, 92vw)' },
+          success: { iconTheme: { primary: '#34d399', secondary: '#060b14' } },
+          error: { iconTheme: { primary: '#f87171', secondary: '#060b14' } },
+        }}
+      />
     </QueryClientProvider>
   </StrictMode>,
 )

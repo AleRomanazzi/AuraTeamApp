@@ -38,6 +38,19 @@ export const ESTADOS_LIQUIDACION = {
   anulada: { label: 'Anulada', tag: '' },
 }
 
+export const ROLES_EQUIPO = [
+  { value: 'cm', label: 'Community manager', detalle: 'Además ve las fichas de clientes (sin montos) y Estadísticas.' },
+  { value: 'editor', label: 'Editor de video' },
+  { value: 'disenio', label: 'Diseño' },
+  { value: 'foto', label: 'Fotografía / Filmmaker' },
+  { value: 'colaborador', label: 'Colaborador' },
+]
+
+export function nombreRoles(usuario) {
+  if (usuario?.es_admin || usuario?.rol === 'admin') return 'Administrador'
+  return (usuario?.roles ?? []).map((r) => labelDe(ROLES_EQUIPO, r)).join(' + ') || 'Equipo'
+}
+
 export const ESTADOS_TAREA = [
   { value: 'pendiente', label: 'Por hacer', tag: '' },
   { value: 'en_curso', label: 'En progreso', tag: 'purple' },
@@ -75,6 +88,6 @@ export const PLATAFORMAS = [
   { value: 'otra', label: 'Otra' },
 ]
 
-export const COLORES = ['#4fffb0', '#7c6fff', '#ff6b6b', '#ffd166', '#4fc3f7', '#f06292', '#a1887f', '#90a4ae']
+export const COLORES = ['#3b82f6', '#818cf8', '#34d399', '#fbbf24', '#f87171', '#22d3ee', '#f472b6', '#94a3b8']
 
 export const labelDe = (lista, value) => lista.find((x) => x.value === value)?.label ?? value ?? '—'

@@ -2,14 +2,19 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import CuentaGoogle
+from .models import ROLES_EQUIPO, CuentaGoogle
 
 User = get_user_model()
+ROLES_VALIDOS = {r for r, _ in ROLES_EQUIPO}
 
 
 class MeSerializer(serializers.ModelSerializer):
     es_admin = serializers.BooleanField(read_only=True)
     persona_nombre = serializers.CharField(source='persona.nombre', read_only=True, default=None)
+    permisos = serializers.SerializerMethodField()
+
+    def get_permisos(self, obj):
+        return sorted(obj.permisos)
 
     class Meta:
         model = User
@@ -21,6 +26,8 @@ class MeSerializer(serializers.ModelSerializer):
             'last_name',
             'nombre_display',
             'rol',
+            'roles',
+            'permisos',
             'es_admin',
             'persona',
             'persona_nombre',
@@ -40,10 +47,15 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'email', 'first_name', 'last_name', 'rol', 'persona', 'persona_nombre',
+            'id', 'username', 'email', 'first_name', 'last_name', 'rol', 'roles', 'persona', 'persona_nombre',
             'is_active', 'last_login', 'date_joined', 'password',
         )
         read_only_fields = ('id', 'last_login', 'date_joined')
+
+    def validate_roles(self, roles):
+        if not isinstance(roles, list) or any(r not in ROLES_VALIDOS for r in roles):
+            raise serializers.ValidationError('Rol inválido.')
+        return list(dict.fromkeys(roles))
 
     def validate_persona(self, persona):
         if persona is None:
@@ -61,6 +73,12 @@ class UsuarioSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'password': 'La contraseña es obligatoria.'})
         if password:
             validate_password(password, user=self.instance)
+        rol = attrs.get('rol', getattr(self.instance, 'rol', 'equipo'))
+        roles = attrs.get('roles', getattr(self.instance, 'roles', []))
+        if rol == 'admin':
+            attrs['roles'] = []
+        elif not roles:
+            raise serializers.ValidationError({'roles': 'Elegí al menos un rol.'})
         request = self.context.get('request')
         if self.instance is not None and request and self.instance.pk == request.user.pk:
             if attrs.get('rol', self.instance.rol) != 'admin' and not self.instance.is_superuser:

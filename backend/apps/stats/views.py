@@ -9,7 +9,7 @@ from rest_framework import mixins, parsers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import requiere_permiso
 from apps.core.uploads import detectar_tipo
 from apps.core.utils import parse_fecha_param
 
@@ -60,7 +60,7 @@ class AnalisisStatsViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = AnalisisStatsSerializer
-    permission_classes = [IsAdmin]
+    permission_classes = [requiere_permiso('estadisticas')]
 
     def get_queryset(self):
         qs = AnalisisStats.objects.select_related('cliente').prefetch_related('imagenes')
@@ -141,7 +141,7 @@ class AnalisisStatsViewSet(
 
 
 class ImagenAnalisisViewSet(viewsets.GenericViewSet):
-    permission_classes = [IsAdmin]
+    permission_classes = [requiere_permiso('estadisticas')]
     queryset = ImagenAnalisis.objects.all()
 
     @action(detail=True, methods=['get'])

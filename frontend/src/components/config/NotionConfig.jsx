@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import CopyField from '../ui/CopyField'
 import QueryState from '../ui/QueryState'
 import Tag from '../ui/Tag'
 import { usePersonas } from '../../hooks/useData'
@@ -33,41 +34,35 @@ function Personas({ configurado }) {
     onError: (e) => notifyError(e),
   })
   return (
-    <div className="card">
+    <div className="card span-2">
       <div className="card-title">
         <span className="dot" style={{ background: 'var(--accent2)' }} /> Responsables: persona del panel ↔ usuario de Notion
       </div>
       <p className="small muted">Así la columna «Responsable» de Notion y los responsables de cada tarea del panel quedan iguales. Las personas sin vincular no se tocan al sincronizar.</p>
       <QueryState query={usuarios}>
         {(lista) => (
-          <div className="table-responsive">
-            <table>
-              <tbody>
-                {personas
-                  .filter((p) => p.activo)
-                  .map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.nombre}</td>
-                      <td>
-                        <select
-                          aria-label={`Usuario de Notion de ${p.nombre}`}
-                          value={p.notion_user_id || ''}
-                          disabled={guardar.isPending}
-                          onChange={(e) => guardar.mutate({ id: p.id, notion_user_id: e.target.value })}
-                        >
-                          <option value="">— Sin vincular —</option>
-                          {lista.map((u) => (
-                            <option key={u.id} value={u.id}>
-                              {u.nombre}
-                              {u.email ? ` (${u.email})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <div>
+            {personas
+              .filter((p) => p.activo)
+              .map((p) => (
+                <div key={p.id} className="vinculo-row">
+                  <span>{p.nombre}</span>
+                  <select
+                    aria-label={`Usuario de Notion de ${p.nombre}`}
+                    value={p.notion_user_id || ''}
+                    disabled={guardar.isPending}
+                    onChange={(e) => guardar.mutate({ id: p.id, notion_user_id: e.target.value })}
+                  >
+                    <option value="">— Sin vincular —</option>
+                    {lista.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.nombre}
+                        {u.email ? ` (${u.email})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
           </div>
         )}
       </QueryState>
@@ -149,18 +144,18 @@ export default function NotionConfig() {
               <div className="data-list small">
                 <div>
                   <span className="muted">URL</span>
-                  <code>{e.webhook_url}</code>
+                  <CopyField valor={e.webhook_url} etiqueta="URL" />
                 </div>
                 <div>
                   <span className="muted">Token de verificación</span>
-                  {e.webhook_token ? <code>{e.webhook_token}</code> : <span className="muted">Todavía no llegó: creá la suscripción en Notion y recargá esta página.</span>}
+                  {e.webhook_token ? <CopyField valor={e.webhook_token} etiqueta="Token" /> : <span className="muted">Todavía no llegó: creá la suscripción en Notion y recargá esta página.</span>}
                 </div>
               </div>
               {e.webhook_token ? (
                 <button
                   type="button"
                   className="btn btn-secondary btn-xs"
-                  style={{ marginTop: 10 }}
+                  style={{ marginTop: 14 }}
                   disabled={reiniciar.isPending}
                   onClick={async () => (await confirmar({ mensaje: 'Se borra el token guardado para poder crear una suscripción nueva en Notion.', confirmar: 'Reiniciar' })) && reiniciar.mutate()}
                 >

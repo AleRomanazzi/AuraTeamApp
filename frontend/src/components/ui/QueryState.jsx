@@ -15,6 +15,11 @@ export default function QueryState({ query, vacio, esVacio, children }) {
   }
   const data = query.data
   const estaVacio = esVacio ? esVacio(data) : Array.isArray(data) && data.length === 0
-  if (estaVacio && vacio) return <div className="state-box">{vacio}</div>
+  if (estaVacio && vacio)
+    return (
+      <div className="state-box">
+        <div>{vacio}</div>
+      </div>
+    )
   return typeof children === 'function' ? children(data) : children
 }

@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.csv_utils import csv_response, monto_es
-from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin
+from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, requiere_permiso, tiene_permiso
 from apps.core.utils import add_months, mes_label, money, parse_mes, today
 
 from . import services
@@ -18,6 +18,7 @@ from .serializers import (
     AjusteInputSerializer,
     AjustePrecioSerializer,
     ClienteBasicoSerializer,
+    ClienteFichaSerializer,
     ClienteSerializer,
     CobroSerializer,
     ContratoSerializer,
@@ -63,7 +64,9 @@ class ClienteViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_serializer_class(self):
-        return ClienteSerializer if es_admin(self.request.user) else ClienteBasicoSerializer
+        if es_admin(self.request.user):
+            return ClienteSerializer
+        return ClienteFichaSerializer if tiene_permiso(self.request.user, 'clientes') else ClienteBasicoSerializer
 
     def get_queryset(self):
         qs = Cliente.objects.all()
@@ -74,6 +77,8 @@ class ClienteViewSet(viewsets.ModelViewSet):
             q = p['q'].strip()
             qs = qs.filter(Q(nombre__icontains=q) | Q(razon_social__icontains=q) | Q(rubro__icontains=q))
         if not es_admin(self.request.user):
+            if tiene_permiso(self.request.user, 'clientes'):
+                return qs.prefetch_related('asignaciones__persona')
             return qs
         hoy = today()
         return qs.annotate(
@@ -153,7 +158,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=['get'], permission_classes=[IsAdmin])
+    @action(detail=True, methods=['get'], permission_classes=[requiere_permiso('estadisticas')])
     def evolucion(self, request, pk=None):
         from apps.stats.models import AnalisisStats
 

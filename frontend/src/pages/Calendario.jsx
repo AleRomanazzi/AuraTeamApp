@@ -223,6 +223,13 @@ export default function Calendario() {
                     ))}
                     {(porDia[dia] ?? []).length > 3 ? <span className="cal-more">+{porDia[dia].length - 3}</span> : null}
                   </span>
+                  {porDia[dia]?.length ? (
+                    <span className="cal-dots" aria-hidden>
+                      {porDia[dia].slice(0, 4).map((it) => (
+                        <i key={it.key} style={{ background: it.color }} />
+                      ))}
+                    </span>
+                  ) : null}
                 </button>
               ) : (
                 <div key={`v${i}`} className="cal-cell empty" />
@@ -231,7 +238,7 @@ export default function Calendario() {
           </div>
           <div className="chart-legend">
             <span>
-              <i style={{ background: 'var(--accent)' }} /> Cobros
+              <i style={{ background: 'var(--success)' }} /> Cobros
             </span>
             <span>
               <i style={{ background: 'var(--accent3)' }} /> Suscripciones
@@ -243,11 +250,11 @@ export default function Calendario() {
               <i style={{ background: 'var(--accent2)' }} /> Eventos / Google
             </span>
           </div>
-          {!google ? (
+          {!google && esAdmin ? (
             <p className="muted small">
               Google Calendar no está conectado (<Link to="/config">conectar</Link>).
             </p>
-          ) : gcal.isError ? (
+          ) : google && gcal.isError ? (
             <p className="down small">No se pudo leer Google Calendar: {gcal.error?.message}</p>
           ) : null}
         </div>
@@ -277,7 +284,7 @@ export default function Calendario() {
                 </div>
                 <div className="list-row-side">
                   {it.monto ? <div className="mono">{fmtCorto(it.monto)}</div> : null}
-                  {it.tipo === 'evento' ? (
+                  {it.tipo === 'evento' && it.evento.puede_editar ? (
                     <span className="nowrap">
                       <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(it.evento)}>
                         Editar

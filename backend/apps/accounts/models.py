@@ -4,11 +4,26 @@ from django.db import models
 
 ROL_CHOICES = [('admin', 'Administrador'), ('equipo', 'Equipo')]
 
+ROLES_EQUIPO = [
+    ('cm', 'Community manager'),
+    ('editor', 'Editor de video'),
+    ('disenio', 'Diseño'),
+    ('foto', 'Fotografía / Filmmaker'),
+    ('colaborador', 'Colaborador'),
+]
+
+# Secciones extra que habilita cada rol, además de lo común a todo el equipo
+# (mi panel, tareas, calendario, sus pagos y su cuenta).
+PERMISOS_POR_ROL = {
+    'cm': {'clientes', 'estadisticas'},
+}
+
 
 class User(AbstractUser):
     moneda = models.CharField(max_length=4, default="$")
     nombre_display = models.CharField(max_length=80, default="Yo")
     rol = models.CharField(max_length=10, choices=ROL_CHOICES, default='equipo')
+    roles = models.JSONField(default=list, blank=True)
     persona = models.OneToOneField(
         'equipo.Persona', null=True, blank=True, on_delete=models.SET_NULL, related_name='usuario'
     )
@@ -16,6 +31,10 @@ class User(AbstractUser):
     @property
     def es_admin(self) -> bool:
         return self.is_superuser or self.rol == 'admin'
+
+    @property
+    def permisos(self) -> set[str]:
+        return set().union(*(PERMISOS_POR_ROL.get(r, set()) for r in self.roles or []))
 
 
 class CuentaGoogle(models.Model):

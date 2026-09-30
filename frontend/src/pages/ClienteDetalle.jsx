@@ -13,8 +13,9 @@ import QueryState from '../components/ui/QueryState'
 import StatCard from '../components/ui/StatCard'
 import Tabs from '../components/ui/Tabs'
 import Tag from '../components/ui/Tag'
+import { useEsAdmin, usePuede } from '../hooks/useData'
 import { api, getList } from '../lib/api'
-import { ESTADOS_CLIENTE, MODALIDADES, PERIODICIDADES_CONTRATO, PLATAFORMAS, labelDe } from '../lib/constants'
+import { ESTADOS_CLIENTE, ESTADOS_TAREA, MODALIDADES, PERIODICIDADES_CONTRATO, PLATAFORMAS, labelDe } from '../lib/constants'
 import { currentMonth, fmt, fmtCorto, formatFecha, monthLabel } from '../lib/format'
 import { num } from '../lib/money'
 import { notify, notifyError } from '../lib/notify'
@@ -23,8 +24,12 @@ import { confirmar } from '../store/confirmStore'
 
 function Resumen({ cliente }) {
   const datos = [
-    ['Razón social', cliente.razon_social],
-    ['CUIT', cliente.cuit],
+    ...('cuit' in cliente
+      ? [
+          ['Razón social', cliente.razon_social],
+          ['CUIT', cliente.cuit],
+        ]
+      : []),
     ['Rubro', cliente.rubro],
     ['Contacto', cliente.contacto],
     ['Email', cliente.email ? <a href={`mailto:${cliente.email}`}>{cliente.email}</a> : null],
@@ -62,6 +67,42 @@ function Resumen({ cliente }) {
     </div>
   )
 }
+
+function TareasCliente({ clienteId }) {
+  const params = { cliente: clienteId }
+  const q = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
+  const ordenadas = useMemo(() => [...(q.data ?? [])].sort((a, b) => (a.estado === 'hecha') - (b.estado === 'hecha')), [q.data])
+  return (
+    <div className="card">
+      <div className="card-title-row">
+        <div className="card-title">
+          <span className="dot" /> Tareas del cliente
+        </div>
+        <Link to="/tareas" className="btn btn-secondary btn-sm">
+          Ir a Tareas
+        </Link>
+      </div>
+      <QueryState query={q} esVacio={() => ordenadas.length === 0} vacio="No hay tareas para este cliente.">
+        <div>
+          {ordenadas.map((t) => (
+            <div key={t.id} className={`list-row${t.estado === 'hecha' ? ' row-muted' : ''}`}>
+              <div className="list-row-main">
+                <div className="list-row-title">{t.titulo}</div>
+                <div className="list-row-sub">
+                  <Tag color={labelTag(ESTADOS_TAREA, t.estado)}>{labelDe(ESTADOS_TAREA, t.estado)}</Tag>{' '}
+                  {t.asignados_nombres.length ? `👤 ${t.asignados_nombres.join(', ')}` : 'Sin responsable'}
+                </div>
+              </div>
+              <div className={`list-row-side small${t.vencida ? ' down' : ''}`}>{t.fecha_limite ? formatFecha(t.fecha_limite) : <span className="muted">Sin fecha</span>}</div>
+            </div>
+          ))}
+        </div>
+      </QueryState>
+    </div>
+  )
+}
+
+const labelTag = (lista, value) => lista.find((x) => x.value === value)?.tag
 
 function Contratos({ clienteId }) {
   const qc = useQueryClient()
@@ -299,7 +340,7 @@ function RentabilidadCliente({ clienteId }) {
               data={d.serie.map((s) => ({
                 label: s.label,
                 valores: [
-                  { nombre: 'Cobrado', valor: num(s.ingresos), color: 'var(--accent)' },
+                  { nombre: 'Cobrado', valor: num(s.ingresos), color: 'var(--success)' },
                   { nombre: 'Costos', valor: num(s.costo_total), color: 'var(--accent3)' },
                 ],
               }))}
@@ -347,7 +388,22 @@ export default function ClienteDetalle() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [sp, setSp] = useSearchParams()
-  const tab = sp.get('tab') || 'resumen'
+  const esAdmin = useEsAdmin()
+  const verStats = usePuede('estadisticas')
+  const tabs = [
+    { value: 'resumen', label: 'Resumen' },
+    { value: 'tareas', label: 'Tareas' },
+    ...(esAdmin
+      ? [
+          { value: 'contratos', label: 'Contratos' },
+          { value: 'cobros', label: 'Cobros' },
+          { value: 'equipo', label: 'Equipo' },
+        ]
+      : []),
+    ...(verStats ? [{ value: 'estadisticas', label: 'Estadísticas' }] : []),
+    ...(esAdmin ? [{ value: 'rentabilidad', label: 'Rentabilidad' }] : []),
+  ]
+  const tab = tabs.some((t) => t.value === sp.get('tab')) ? sp.get('tab') : 'resumen'
   const [editando, setEditando] = useState(false)
   const q = useQuery({ queryKey: QK.cliente(clienteId), queryFn: () => api.get(`clientes/${clienteId}/`).then((r) => r.data) })
 
@@ -378,51 +434,51 @@ export default function ClienteDetalle() {
               }
               subtitulo={c.asignados.length ? `Equipo: ${c.asignados.map((a) => a.persona_nombre + (a.rol ? ` (${a.rol})` : '')).join(', ')}` : c.rubro}
             >
-              <Link to={`/clientes/${clienteId}/reporte?mes=${currentMonth()}`} className="btn btn-secondary btn-sm">
-                📄 Reporte mensual
-              </Link>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditando(true)}>
-                Editar
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={async () =>
-                  (await confirmar({
-                    titulo: `Eliminar ${c.nombre}`,
-                    mensaje: 'Se borran sus contratos y asignaciones. Si tiene cobros no se puede borrar: marcalo como «Baja».',
-                    peligro: true,
-                    escribir: c.nombre,
-                    confirmar: 'Eliminar',
-                  })) && borrar.mutate()
-                }
-              >
-                Eliminar
-              </button>
+              {esAdmin ? (
+                <>
+                  <Link to={`/clientes/${clienteId}/reporte?mes=${currentMonth()}`} className="btn btn-secondary btn-sm">
+                    📄 Reporte mensual
+                  </Link>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditando(true)}>
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={async () =>
+                      (await confirmar({
+                        titulo: `Eliminar ${c.nombre}`,
+                        mensaje: 'Se borran sus contratos y asignaciones. Si tiene cobros no se puede borrar: marcalo como «Baja».',
+                        peligro: true,
+                        escribir: c.nombre,
+                        confirmar: 'Eliminar',
+                      })) && borrar.mutate()
+                    }
+                  >
+                    Eliminar
+                  </button>
+                </>
+              ) : null}
             </PageHeader>
 
-            <div className="grid-3">
-              <StatCard label="Fee mensual" value={fmtCorto(c.fee_mensual)} color="green" />
-              <StatCard label="Deuda abierta" value={fmtCorto(c.deuda)} color="gold" onClick={() => setSp({ tab: 'cobros' }, { replace: true })} />
-              <StatCard label="Deuda vencida" value={<span className={num(c.deuda_vencida) > 0 ? 'down' : ''}>{fmtCorto(c.deuda_vencida)}</span>} color="red" />
-            </div>
+            {esAdmin ? (
+              <div className="grid-3">
+                <StatCard label="Fee mensual" value={fmtCorto(c.fee_mensual)} color="green" />
+                <StatCard label="Deuda abierta" value={fmtCorto(c.deuda)} color="gold" onClick={() => setSp({ tab: 'cobros' }, { replace: true })} />
+                <StatCard label="Deuda vencida" value={<span className={num(c.deuda_vencida) > 0 ? 'down' : ''}>{fmtCorto(c.deuda_vencida)}</span>} color="red" />
+              </div>
+            ) : null}
 
             <div style={{ margin: '16px 0' }}>
               <Tabs
                 value={tab}
                 onChange={(v) => setSp(v === 'resumen' ? {} : { tab: v }, { replace: true })}
-                tabs={[
-                  { value: 'resumen', label: 'Resumen' },
-                  { value: 'contratos', label: 'Contratos' },
-                  { value: 'cobros', label: 'Cobros', badge: num(c.deuda_vencida) > 0 ? '!' : null },
-                  { value: 'equipo', label: 'Equipo' },
-                  { value: 'estadisticas', label: 'Estadísticas' },
-                  { value: 'rentabilidad', label: 'Rentabilidad' },
-                ]}
+                tabs={tabs.map((t) => (t.value === 'cobros' ? { ...t, badge: num(c.deuda_vencida) > 0 ? '!' : null } : t))}
               />
             </div>
 
             {tab === 'resumen' ? <Resumen cliente={c} /> : null}
+            {tab === 'tareas' ? <TareasCliente clienteId={clienteId} /> : null}
             {tab === 'contratos' ? <Contratos clienteId={clienteId} /> : null}
             {tab === 'cobros' ? <CobrosCliente clienteId={clienteId} /> : null}
             {tab === 'equipo' ? <EquipoCliente clienteId={clienteId} /> : null}

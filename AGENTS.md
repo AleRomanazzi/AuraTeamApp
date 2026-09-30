@@ -25,8 +25,11 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
 ## Stack
 
 - **Backend** (`backend/`): Django 6 + DRF + simplejwt. Apps en `backend/apps/`:
-  - `accounts`: usuarios con rol `admin` / `equipo` (vinculados a una `Persona`), JWT, y la cuenta de Google fija de
-    la agencia (`google.py`: refresh token cifrado, entrega access tokens en `/api/auth/google/token/`).
+ - `accounts`: usuarios con acceso `admin` / `equipo` (vinculados a una `Persona`), JWT, y la cuenta de Google fija de
+ la agencia (`google.py`: refresh token cifrado, entrega access tokens en `/api/auth/google/token/`). Los de equipo
+ tienen uno o varios `roles` (CM, editor, diseño, foto, colaborador); las secciones extra de cada rol están en
+ `PERMISOS_POR_ROL` (`accounts/models.py`) y se chequean con `requiere_permiso` / `tiene_permiso` (`core/permissions.py`).
+ Todo el equipo ve todas las tareas y edita las suyas; los eventos del calendario solo los edita quien los creó.
   - `clientes`: Cliente, Contrato, Cobro (generación de cobros, registrar pago, ajustes de precio).
   - `equipo`: Persona, Tarea, AsignacionTarea, AsignacionCliente, Liquidacion. Los repartos de un cobro entre el
     equipo son **manuales** (`services.repartir_cobro`); las asignaciones fijas son solo referencia.

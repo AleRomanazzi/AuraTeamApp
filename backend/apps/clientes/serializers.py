@@ -24,6 +24,24 @@ class ClienteBasicoSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ClienteFichaSerializer(serializers.ModelSerializer):
+    """Ficha para roles con acceso a Clientes: contacto y equipo, sin datos de facturación."""
+
+    asignados = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cliente
+        fields = ('id', 'nombre', 'rubro', 'contacto', 'email', 'whatsapp', 'estado', 'fecha_alta', 'color', 'notas', 'asignados')
+        read_only_fields = fields
+
+    def get_asignados(self, obj):
+        return [
+            {'id': a.id, 'persona': a.persona_id, 'persona_nombre': a.persona.nombre, 'rol': a.rol}
+            for a in obj.asignaciones.all()
+            if a.activo
+        ]
+
+
 class ClienteSerializer(serializers.ModelSerializer):
     deuda = serializers.SerializerMethodField()
     deuda_vencida = serializers.SerializerMethodField()

@@ -12,7 +12,7 @@ import { isSignedIn, signOutGoogle } from '../features/google/gapiClient'
 import { useGoogleStore } from '../features/google/googleStore'
 import { useCategorias, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
-import { COLORES } from '../lib/constants'
+import { COLORES, ROLES_EQUIPO, labelDe, nombreRoles } from '../lib/constants'
 import { formatFechaHora } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
 import { QK } from '../lib/queryKeys'
@@ -65,7 +65,7 @@ function Perfil({ me }) {
           <input value={f.nombre_display} onChange={(e) => setF((s) => ({ ...s, nombre_display: e.target.value }))} />
         </Field>
         <div className="small muted" style={{ marginBottom: 12 }}>
-          Usuario: <strong>{me.username}</strong> · Rol: <strong>{me.es_admin ? 'Administrador' : 'Equipo'}</strong>
+          Usuario: <strong>{me.username}</strong> · Rol: <strong>{nombreRoles(me)}</strong>
           {me.persona_nombre ? ` · Vinculado a ${me.persona_nombre}` : ''}
         </div>
         <button type="submit" className="btn btn-primary btn-sm" disabled={guardar.isPending}>
@@ -150,7 +150,7 @@ function Google({ me }) {
   })
 
   return (
-    <div className="card" style={{ maxWidth: 640 }}>
+    <div className="card" style={{ maxWidth: 720 }}>
       <div className="card-title">
         <span className="dot" /> Google (Gmail y Calendar)
       </div>
@@ -214,11 +214,13 @@ function UsuarioForm({ inicial, onClose }) {
     last_name: inicial?.last_name ?? '',
     email: inicial?.email ?? '',
     rol: inicial?.rol ?? 'equipo',
+    roles: inicial?.roles ?? [],
     persona: inicial?.persona ?? '',
     is_active: inicial?.is_active ?? true,
     password: '',
   }))
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
+  const toggleRol = (r) => setF((s) => ({ ...s, roles: s.roles.includes(r) ? s.roles.filter((x) => x !== r) : [...s.roles, r] }))
   const guardar = useMutation({
     mutationFn: () => {
       const body = { ...f, persona: f.persona || null }
@@ -265,7 +267,10 @@ function UsuarioForm({ inicial, onClose }) {
         </Field>
       </div>
       <div className="grid-2 tight">
-        <Field label="Rol" hint={f.rol === 'admin' ? 'Ve todo: finanzas, clientes y configuración.' : 'Solo ve sus tareas, sus pagos y el calendario.'}>
+        <Field
+          label="Acceso"
+          hint={f.rol === 'admin' ? 'Ve y administra todo: finanzas, clientes, equipo y configuración.' : 'Mi panel, tareas, calendario, sus pagos y lo que sume cada rol.'}
+        >
           <select value={f.rol} onChange={set('rol')}>
             <option value="equipo">Equipo</option>
             <option value="admin">Administrador</option>
@@ -282,6 +287,17 @@ function UsuarioForm({ inicial, onClose }) {
           </select>
         </Field>
       </div>
+      {f.rol === 'equipo' ? (
+        <Field label="Roles" hint={ROLES_EQUIPO.filter((r) => r.detalle && f.roles.includes(r.value)).map((r) => r.detalle).join(' ') || 'Podés combinar varios, por ejemplo Fotografía + Diseño.'}>
+          <div className="chip-select">
+            {ROLES_EQUIPO.map((r) => (
+              <button key={r.value} type="button" className={`chip${f.roles.includes(r.value) ? ' active' : ''}`} onClick={() => toggleRol(r.value)} aria-pressed={f.roles.includes(r.value)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </Field>
+      ) : null}
       <Field label={inicial?.id ? 'Nueva contraseña (dejar vacío para no cambiarla)' : 'Contraseña'}>
         <input type="password" autoComplete="new-password" value={f.password} onChange={set('password')} required={!inicial?.id} minLength={8} />
       </Field>
@@ -316,7 +332,7 @@ function Usuarios({ me }) {
       </div>
       <QueryState query={q}>
         {(lista) => (
-          <div className="table-responsive">
+          <div className="table-responsive tabla-apilada">
             <table>
               <thead>
                 <tr>
@@ -330,17 +346,23 @@ function Usuarios({ me }) {
               <tbody>
                 {lista.map((u) => (
                   <tr key={u.id} className={u.is_active ? '' : 'row-muted'}>
-                    <td>
+                    <td className="celda-principal">
                       <div className="cell-title">{u.username}</div>
                       <div className="cell-sub">{[u.first_name, u.last_name].filter(Boolean).join(' ') || u.email}</div>
                     </td>
-                    <td>
-                      <Tag color={u.rol === 'admin' ? 'purple' : ''}>{u.rol === 'admin' ? 'Admin' : 'Equipo'}</Tag>
+                    <td data-label="Rol">
+                      {u.rol === 'admin' ? (
+                        <Tag color="purple">Admin</Tag>
+                      ) : (
+                        u.roles.map((r) => <Tag key={r}>{labelDe(ROLES_EQUIPO, r)}</Tag>)
+                      )}
                       {!u.is_active ? <Tag color="red">Inactivo</Tag> : null}
                     </td>
-                    <td>{u.persona_nombre || <span className="muted">—</span>}</td>
-                    <td className="small">{u.last_login ? formatFechaHora(u.last_login) : 'Nunca'}</td>
-                    <td className="nowrap">
+                    <td data-label="Persona">{u.persona_nombre || <span className="muted">—</span>}</td>
+                    <td className="small celda-ancha" data-label="Último acceso">
+                      {u.last_login ? formatFechaHora(u.last_login) : 'Nunca'}
+                    </td>
+                    <td className="nowrap actions-cell">
                       <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(u)}>
                         Editar
                       </button>{' '}
@@ -587,7 +609,7 @@ export default function Config() {
   return (
     <>
       <PageHeader titulo="Configuración" />
-      <div style={{ marginBottom: 16 }}>
+      <div className="config-tabs">
         <Tabs tabs={tabs} value={actual} onChange={(v) => setSp(v === 'perfil' ? {} : { tab: v }, { replace: true })} />
       </div>
       {actual === 'perfil' ? <Perfil key={me.id} me={me} /> : null}

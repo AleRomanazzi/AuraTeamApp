@@ -108,7 +108,7 @@ function mapGoogleEventToUi(e, calId, calSummary) {
     inicio,
     fin,
     desc: e.description || '',
-    color: '#7c6fff',
+    color: '#818cf8',
     calendario: calSummary || calId,
     calendarioId: calId,
   }

@@ -144,7 +144,7 @@ export default function Dashboard() {
                   data={d.series_6_meses.map((s) => ({
                     label: s.label,
                     valores: [
-                      { nombre: 'Ingresos', valor: Number(s.ingreso), color: 'var(--accent)' },
+                      { nombre: 'Ingresos', valor: Number(s.ingreso), color: 'var(--success)' },
                       { nombre: 'Egresos', valor: Number(s.egreso), color: 'var(--accent3)' },
                     ],
                   }))}

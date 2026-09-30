@@ -321,7 +321,7 @@ export default function Movimientos() {
             </select>
           </div>
           <QueryState query={q} vacio="No hay movimientos con estos filtros.">
-            <div className="table-responsive">
+            <div className="table-responsive tabla-apilada">
               <table>
                 <thead>
                   <tr>
@@ -336,8 +336,10 @@ export default function Movimientos() {
                 <tbody>
                   {filtradas.map((t) => (
                     <tr key={t.id}>
-                      <td className="nowrap">{formatFecha(t.fecha, { day: 'numeric', month: 'short' })}</td>
-                      <td>
+                      <td className="nowrap" data-label="Fecha">
+                        {formatFecha(t.fecha, { day: 'numeric', month: 'short' })}
+                      </td>
+                      <td className="celda-principal">
                         <div className="cell-title">{t.descripcion}</div>
                         <div className="cell-sub">
                           {t.cliente_nombre ? <span>🏷️ {t.cliente_nombre} </span> : null}
@@ -346,18 +348,18 @@ export default function Movimientos() {
                           {t.origen ? <Tag color="purple">{ORIGEN[t.origen.tipo]}</Tag> : null}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Categoría">
                         <span className="cat-dot" style={{ background: t.categoria_color }} />
                         {t.categoria_nombre}
                       </td>
-                      <td className={`num mono nowrap ${t.tipo === 'ingreso' ? 'up' : 'down'}`}>
+                      <td className={`num mono nowrap ${t.tipo === 'ingreso' ? 'up' : 'down'}`} data-label="Monto">
                         {t.tipo === 'ingreso' ? '+' : '−'}
                         {fmt(t.monto)}
                       </td>
-                      <td>
+                      <td className="celda-ancha">
                         <Adjuntos tx={t} />
                       </td>
-                      <td className="nowrap">
+                      <td className="nowrap actions-cell">
                         <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(t)}>
                           Editar
                         </button>{' '}
@@ -388,7 +390,7 @@ export default function Movimientos() {
                   </span>
                   <span className={`mono ${c.tipo === 'ingreso' ? 'up' : 'down'}`}>{fmtCorto(c.total)}</span>
                 </div>
-                <ProgressBar valor={(c.total / maxCat) * 100} color={c.tipo === 'ingreso' ? 'var(--accent)' : 'var(--accent3)'} />
+                <ProgressBar valor={(c.total / maxCat) * 100} color={c.tipo === 'ingreso' ? 'var(--success)' : 'var(--accent3)'} />
               </button>
             ))
           )}

@@ -49,7 +49,7 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
 
   return (
     <>
-      <div className="table-responsive">
+      <div className="table-responsive tabla-apilada">
         <table>
           <thead>
             <tr>
@@ -69,18 +69,18 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
               const abierto = c.estado === 'pendiente' || c.estado === 'parcial'
               return (
                 <tr key={c.id} className={c.estado === 'anulado' ? 'row-muted' : ''}>
-                  <td>
+                  <td className="ocultar-movil">
                     <Semaforo cobro={c} />
                   </td>
                   {mostrarCliente ? (
-                    <td>
+                    <td className="celda-principal">
                       <Link to={`/clientes/${c.cliente}`} className="cell-title link">
                         <span className="cat-dot" style={{ background: c.cliente_color }} />
                         {c.cliente_nombre}
                       </Link>
                     </td>
                   ) : null}
-                  <td>
+                  <td className={mostrarCliente ? 'celda-ancha' : 'celda-principal'}>
                     <div className="cell-title">{c.concepto}</div>
                     {mostrarPeriodo ? <div className="cell-sub">{monthLabel(c.periodo)}</div> : null}
                     {c.fecha_pago ? (
@@ -91,13 +91,17 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
                       </div>
                     ) : null}
                   </td>
-                  <td className="nowrap">
+                  <td className="nowrap" data-label="Vence">
                     {formatFecha(c.vencimiento, { day: 'numeric', month: 'short' })}
                     {c.vencido ? <div className="cell-sub down">hace {c.dias_vencido} d</div> : null}
                   </td>
-                  <td className="num mono nowrap">{fmt(c.monto)}</td>
-                  <td className={`num mono nowrap ${abierto ? (c.vencido ? 'down' : '') : 'muted'}`}>{fmt(c.saldo)}</td>
-                  <td>
+                  <td className="num mono nowrap" data-label="Monto">
+                    {fmt(c.monto)}
+                  </td>
+                  <td className={`num mono nowrap ${abierto ? (c.vencido ? 'down' : '') : 'muted'}`} data-label="Saldo">
+                    {fmt(c.saldo)}
+                  </td>
+                  <td data-label="Estado">
                     <Tag color={est.tag}>{est.label}</Tag>
                   </td>
                   <td className="nowrap actions-cell">

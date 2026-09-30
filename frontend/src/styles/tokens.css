@@ -1,20 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=League+Gothic&family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg: #0c0f14;
-  --surface: #141820;
-  --surface2: #1c2230;
-  --border: #252d3d;
-  --accent: #4fffb0;
-  --accent2: #7c6fff;
-  --accent3: #ff6b6b;
-  --text: #e8edf5;
-  --text-muted: #6b7a99;
-  --text-dim: #3d4d6a;
-  --gold: #ffd166;
-  --font-display: 'DM Serif Display', serif;
-  --font-body: 'Outfit', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-  --radius: 12px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+  --bg: #060b14;
+  --surface: #0b1221;
+  --surface2: #111a2e;
+  --surface3: #16223a;
+  --border: rgba(148, 163, 184, 0.12);
+  --border-strong: rgba(148, 163, 184, 0.22);
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --accent-soft: #60a5fa;
+  --accent-bg: rgba(59, 130, 246, 0.12);
+  --accent2: #818cf8;
+  --accent3: #f87171;
+  --success: #34d399;
+  --gold: #fbbf24;
+  --text: #e2e8f0;
+  --text-strong: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --font-display: 'League Gothic', 'Arial Narrow', sans-serif;
+  --font-body: 'Roboto', system-ui, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, monospace;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --glow: 0 0 24px rgba(37, 99, 235, 0.35);
+  --sidebar-w: 248px;
 }

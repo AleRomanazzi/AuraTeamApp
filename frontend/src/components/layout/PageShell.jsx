@@ -36,6 +36,17 @@ export default function PageShell() {
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), [])
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
 
+  useEffect(() => {
+    if (!sidebarOpen) return undefined
+    const onKey = (e) => e.key === 'Escape' && setSidebarOpen(false)
+    document.addEventListener('keydown', onKey)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = ''
+    }
+  }, [sidebarOpen])
+
   return (
     <>
       <div id="sidebar-overlay" className={sidebarOpen ? 'open' : ''} onClick={closeSidebar} role="presentation" aria-hidden="true" />

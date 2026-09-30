@@ -7,9 +7,9 @@ from .models import CuentaGoogle
 
 @admin.register(get_user_model())
 class AuraUserAdmin(UserAdmin):
-    list_display = ('username', 'email', 'rol', 'persona', 'is_active', 'is_superuser')
+    list_display = ('username', 'email', 'rol', 'roles', 'persona', 'is_active', 'is_superuser')
     list_filter = ('rol', 'is_active', 'is_superuser')
-    fieldsets = UserAdmin.fieldsets + (('AuraTeam', {'fields': ('rol', 'persona', 'nombre_display')}),)
+    fieldsets = UserAdmin.fieldsets + (('AuraTeam', {'fields': ('rol', 'roles', 'persona', 'nombre_display')}),)
 
 
 @admin.register(CuentaGoogle)

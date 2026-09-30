@@ -12,7 +12,7 @@ from apps.core.utils import money, parse_mes, today
 from apps.integraciones import notion
 
 from . import services
-from .models import AsignacionCliente, Liquidacion, Persona, Tarea
+from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea
 from .serializers import (
     AsignacionClienteSerializer,
     LiquidacionSerializer,
@@ -21,6 +21,7 @@ from .serializers import (
     PersonaSerializer,
     RepartirSerializer,
     TareaSerializer,
+    es_tarea_propia,
 )
 
 
@@ -60,14 +61,21 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
 
 class TareaPermission(permissions.BasePermission):
-    """El equipo ve sus tareas y solo puede cambiarles el estado."""
+    """Todos ven todas las tareas; el equipo crea y edita las suyas (asignadas o creadas por él). Borrar es del admin."""
+
+    message = 'Solo podés editar tus tareas.'
 
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
             return True
-        return view.action == 'partial_update'
+        return view.action in ('create', 'update', 'partial_update')
+
+    def has_object_permission(self, request, view, obj):
+        if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
+            return True
+        return es_tarea_propia(request.user, obj)
 
 
 class TareaViewSet(viewsets.ModelViewSet):
@@ -76,12 +84,6 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Tarea.objects.select_related('cliente').prefetch_related('asignaciones__persona')
-        user = self.request.user
-        if not es_admin(user):
-            persona = persona_de(user)
-            if persona is None:
-                return qs.none()
-            qs = qs.filter(asignaciones__persona=persona)
         p = self.request.query_params
         if p.get('estado') == 'abiertas':
             qs = qs.exclude(estado='hecha')
@@ -96,11 +98,20 @@ class TareaViewSet(viewsets.ModelViewSet):
         return qs.distinct()
 
     def perform_create(self, serializer):
-        notion.al_guardar_tarea(serializer.save(user=self.request.user))
+        user = self.request.user
+        tarea = serializer.save(user=user)
+        persona = persona_de(user)
+        if not es_admin(user) and persona is not None and not tarea.asignaciones.exists():
+            AsignacionTarea.objects.create(persona=persona, tarea=tarea)
+        notion.al_guardar_tarea(tarea)
 
     def perform_update(self, serializer):
-        if not es_admin(self.request.user) and set(serializer.validated_data) - {'estado'}:
-            raise PermissionDenied('Solo podés cambiar el estado de tus tareas.')
+        user, tarea = self.request.user, serializer.instance
+        nuevos = serializer.validated_data.get('personas_asignadas')
+        if nuevos is not None and not es_admin(user) and tarea.user_id != user.id:
+            actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
+            if {p.id for p in nuevos} != actuales:
+                raise PermissionDenied('Solo quien creó la tarea o un administrador puede cambiar los responsables.')
         notion.al_guardar_tarea(serializer.save())
 
     def perform_destroy(self, instance):

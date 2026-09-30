@@ -11,6 +11,15 @@ export function useEsAdmin() {
   return Boolean(data?.es_admin)
 }
 
+export function puede(me, permiso) {
+  return Boolean(me?.es_admin || me?.permisos?.includes(permiso))
+}
+
+export function usePuede(permiso) {
+  const { data } = useMe()
+  return puede(data, permiso)
+}
+
 export function useCategorias() {
   return useQuery({ queryKey: QK.categorias, queryFn: () => getList('categorias/'), staleTime: 5 * 60_000 })
 }

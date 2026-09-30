@@ -179,7 +179,9 @@ class MiPanelView(APIView):
         from apps.calendario.serializers import EventoUnicoSerializer
         from apps.calendario.views import eventos_visibles
         from apps.equipo.serializers import LiquidacionSerializer, TareaSerializer
+        from apps.equipo.services import generar_recurrentes
 
+        generar_recurrentes()
         persona = request.user.persona
         hoy = today()
         tareas = Tarea.objects.none()

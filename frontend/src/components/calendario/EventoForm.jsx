@@ -22,7 +22,7 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
   const esAdmin = useEsAdmin()
   const [f, setF] = useState(() => ({
     titulo: inicial?.titulo ?? '',
-    etiqueta: inicial?.etiqueta ?? 'operaciones',
+    etiqueta: inicial?.etiqueta ?? 'historias',
     inicio: inicial?.inicio ? toDatetimeLocal(inicial.inicio) : `${dia}T10:00`,
     fin: inicial?.fin ? toDatetimeLocal(inicial.fin) : '',
     cliente: inicial?.cliente ?? cliente?.id ?? '',

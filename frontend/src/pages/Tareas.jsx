@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import EventoForm from '../components/calendario/EventoForm'
 import CalendarioCliente from '../components/tareas/CalendarioCliente'
 import ClienteBloque from '../components/tareas/ClienteBloque'
+import RecurrentesModal from '../components/tareas/RecurrentesModal'
 import TableroTareas from '../components/tareas/TableroTareas'
 import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
@@ -40,6 +41,7 @@ export default function Tareas() {
   const [tareaAbierta, setTareaAbierta] = useState(null)
   const [calendario, setCalendario] = useState(null)
   const [evento, setEvento] = useState(null)
+  const [recurrentes, setRecurrentes] = useState(false)
 
   const hoy = todayISO()
   const lunes = lunesDe(hoy)
@@ -125,6 +127,11 @@ export default function Tareas() {
             Tablero
           </button>
         </div>
+        {esAdmin ? (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRecurrentes(true)}>
+            ↻ Recurrentes
+          </button>
+        ) : null}
         <button type="button" className="btn btn-primary btn-sm" onClick={() => setTareaAbierta({})}>
           + Nueva tarea
         </button>
@@ -184,7 +191,9 @@ export default function Tareas() {
         }
       </QueryState>
 
-      {evento ? (
+      {recurrentes ? (
+        <RecurrentesModal onClose={() => setRecurrentes(false)} />
+      ) : evento ? (
         <EventoForm inicial={evento.inicial} dia={evento.dia} cliente={evento.cliente?.id ? evento.cliente : null} onClose={() => setEvento(null)} />
       ) : tareaAbierta ? (
         <TareaSheet tarea={tareaAbierta.tarea} cliente={tareaAbierta.cliente} onClose={() => setTareaAbierta(null)} />

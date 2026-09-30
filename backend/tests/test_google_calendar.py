@@ -17,6 +17,8 @@ NOMBRES = {
     'ops@group': 'Operaciones AuraTeam',
     'cob@group': 'Coberturas',
     'reu@group': 'Reuniones&Briefing',
+    'pos@group': 'Posteos',
+    'edi@group': 'Edición',
 }
 
 
@@ -123,7 +125,8 @@ def _incremental():
 def test_las_etiquetas_se_vinculan_por_nombre(gcal):
     google_calendar.sincronizar()
     assert dict(CalendarioGoogle.objects.values_list('etiqueta', 'calendar_id')) == {
-        'ceos': PRINCIPAL, 'operaciones': 'ops@group', 'coberturas': 'cob@group', 'reuniones': 'reu@group',
+        'ceos': PRINCIPAL, 'historias': 'ops@group', 'coberturas': 'cob@group', 'reuniones': 'reu@group',
+        'posteos': 'pos@group', 'edicion': 'edi@group',
     }
 
 
@@ -163,7 +166,7 @@ def test_lo_cargado_en_google_reconoce_al_cliente(gcal, clientes):
     assert _incremental()['creados'] == 3
 
     ev = EventoUnico.objects.get(google_event_id=por_titulo['id'])
-    assert ev.cliente == clientes['cycles'] and ev.etiqueta == 'operaciones' and ev.color == '#dc2127'
+    assert ev.cliente == clientes['cycles'] and ev.etiqueta == 'historias' and ev.color == '#dc2127'
     assert EventoUnico.objects.get(google_event_id=por_color['id']).cliente == clientes['lennon']
     assert EventoUnico.objects.get(google_event_id=sin_cliente['id']).cliente is None
 
@@ -187,7 +190,7 @@ def test_mover_de_etiqueta_en_google_no_borra(api_client, gcal, clientes):
     gcal.mover('cob@group', ev.google_event_id, 'ops@group')
     r = _incremental()
     ev.refresh_from_db()
-    assert r['borrados'] == 0 and ev.etiqueta == 'operaciones' and ev.user is not None
+    assert r['borrados'] == 0 and ev.etiqueta == 'historias' and ev.user is not None
 
 
 @pytest.mark.django_db
@@ -200,7 +203,7 @@ def test_lo_subido_desde_el_panel_vuelve_sin_cambios(api_client, gcal, clientes)
 
 
 @pytest.mark.django_db
-def test_tareas_con_fecha_van_a_operaciones(api_client, gcal, clientes):
+def test_tareas_con_fecha_van_a_historias(api_client, gcal, clientes):
     google_calendar.sincronizar()
     fecha = (timezone.localdate() + timedelta(days=3)).isoformat()
     r = api_client.post('/api/tareas/', {'titulo': 'Editar reels', 'fecha_limite': fecha, 'cliente': clientes['cycles'].id}, format='json')
@@ -218,6 +221,42 @@ def test_tareas_con_fecha_van_a_operaciones(api_client, gcal, clientes):
                                    extendedProperties={'private': {'aura_tarea': '999'}})
     _incremental()
     assert huerfano['id'] not in gcal.eventos('ops@group')
+
+
+@pytest.mark.django_db
+def test_la_tarea_va_al_calendario_de_su_etiqueta_y_se_mueve(api_client, gcal, clientes):
+    google_calendar.sincronizar()
+    fecha = (timezone.localdate() + timedelta(days=2)).isoformat()
+    r = api_client.post('/api/tareas/', {'titulo': 'Reel', 'fecha_limite': fecha, 'etiqueta': 'posteos'}, format='json')
+    tarea = Tarea.objects.get(pk=r.data['id'])
+    assert tarea.google_event_id in gcal.eventos('pos@group') and tarea.google_calendar_id == 'pos@group'
+
+    api_client.patch(f'/api/tareas/{tarea.id}/', {'etiqueta': 'edicion'}, format='json')
+    tarea.refresh_from_db()
+    assert not gcal.eventos('pos@group') and tarea.google_event_id in gcal.eventos('edi@group')
+
+    api_client.delete(f'/api/tareas/{tarea.id}/')
+    assert not gcal.eventos('edi@group')
+
+
+@pytest.mark.django_db
+def test_tarea_vieja_de_operaciones_se_mueve_desde_historias(api_client, gcal, clientes):
+    google_calendar.sincronizar()
+    fecha = (timezone.localdate() + timedelta(days=2)).isoformat()
+    vieja = gcal.agregar_evento('ops@group', summary='Guion', start={'date': fecha}, end={'date': fecha})
+    tarea = Tarea.objects.create(titulo='Guion', fecha_limite=fecha, google_event_id=vieja['id'])
+    gcal.editar('ops@group', vieja['id'], extendedProperties={'private': {'aura_tarea': str(tarea.pk)}})
+    api_client.patch(f'/api/tareas/{tarea.id}/', {'etiqueta': 'posteos'}, format='json')
+    assert vieja['id'] in gcal.eventos('pos@group') and not gcal.eventos('ops@group')
+
+
+@pytest.mark.django_db
+def test_sin_calendario_de_la_etiqueta_la_sincronizacion_sigue(gcal, clientes):
+    del gcal.calendarios['edi@group']
+    google_calendar.sincronizar()
+    Tarea.objects.create(titulo='Editar', fecha_limite=timezone.localdate() + timedelta(days=1), etiqueta='edicion')
+    Tarea.objects.create(titulo='Historia', fecha_limite=timezone.localdate() + timedelta(days=1))
+    assert _incremental()['tareas'] == 1
 
 
 @pytest.mark.django_db

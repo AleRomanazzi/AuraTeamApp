@@ -4,7 +4,7 @@ import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import { useClientes, useMe, usePersonas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { ESTADOS_TAREA, PRIORIDADES } from '../../lib/constants'
+import { ESTADOS_TAREA, ETIQUETAS_TAREA, PRIORIDADES } from '../../lib/constants'
 import { notify, notifyError } from '../../lib/notify'
 import { TAREAS, invalidar } from '../../lib/queryKeys'
 import { confirmar } from '../../store/confirmStore'
@@ -34,6 +34,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
     estado: tarea?.estado ?? 'pendiente',
     prioridad: tarea?.prioridad ?? 'media',
     fecha_limite: tarea?.fecha_limite ?? '',
+    etiqueta: tarea?.etiqueta ?? 'historias',
     asignados: tarea?.asignados ?? [],
     links: tarea?.links ?? [],
   }))
@@ -122,6 +123,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
                 </option>
               ))}
           </select>
+          {tarea?.recurrente ? <span className="tarea-sheet-sync">↻ Recurrente</span> : null}
           {tarea?.notion_url ? <span className="tarea-sheet-sync">Sincronizada con Notion</span> : null}
         </div>
         <input className="tarea-sheet-titulo" value={f.titulo} onChange={set('titulo')} required maxLength={200} placeholder="Título de la tarea" aria-label="Título" />
@@ -144,6 +146,15 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               {PRIORIDADES.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Calendario" hint="Con fecha, va como día completo a ese calendario de Google.">
+            <select value={f.etiqueta} onChange={set('etiqueta')}>
+              {ETIQUETAS_TAREA.map((e) => (
+                <option key={e.value} value={e.value}>
+                  {e.label}
                 </option>
               ))}
             </select>

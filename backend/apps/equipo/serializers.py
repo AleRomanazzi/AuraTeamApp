@@ -10,9 +10,10 @@ from apps.clientes.models import Cliente
 from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
-from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Tarea
+from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Tarea, TareaRecurrente
 
 MAX_LINKS_TAREA = 20
+MAX_POR_DIA = 10
 
 
 def es_tarea_propia(user, tarea) -> bool:
@@ -35,10 +36,10 @@ class TareaSerializer(serializers.ModelSerializer):
         model = Tarea
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
-            'fecha_limite', 'links', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
-            'notion_url', 'creado_por', 'puede_editar',
+            'fecha_limite', 'etiqueta', 'links', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
+            'notion_url', 'creado_por', 'puede_editar', 'recurrente',
         )
-        read_only_fields = ('id', 'completada_en', 'creado')
+        read_only_fields = ('id', 'completada_en', 'creado', 'recurrente')
 
     notion_url = serializers.SerializerMethodField()
     creado_por = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
@@ -126,6 +127,32 @@ class TareaSerializer(serializers.ModelSerializer):
         if hasattr(instance, '_prefetched_objects_cache'):
             instance._prefetched_objects_cache.clear()
         return instance
+
+
+class TareaRecurrenteSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True, default=None)
+    cliente_color = serializers.CharField(source='cliente.color', read_only=True, default=None)
+    personas = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Persona.objects.all())
+    por_dia = serializers.IntegerField(min_value=1, max_value=MAX_POR_DIA, default=1)
+
+    class Meta:
+        model = TareaRecurrente
+        fields = (
+            'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'personas', 'dias', 'por_dia',
+            'etiqueta', 'prioridad', 'activa', 'generada_hasta', 'creado',
+        )
+        read_only_fields = ('id', 'generada_hasta', 'creado')
+
+    def validate_titulo(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('El título es obligatorio.')
+        return value
+
+    def validate_dias(self, value):
+        if not isinstance(value, list) or not value or any(not isinstance(d, int) or not 0 <= d <= 6 for d in value):
+            raise serializers.ValidationError('Elegí al menos un día de la semana.')
+        return sorted(set(value))
 
 
 class PersonaBasicaSerializer(serializers.ModelSerializer):

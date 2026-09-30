@@ -15,7 +15,7 @@ function resumenSync(r) {
   if (r.omitida) return r.detail || 'No había nada nuevo para sincronizar'
   const partes = [
     r.enviados && `${r.enviados} eventos subidos a Google`,
-    r.tareas && `${r.tareas} tareas actualizadas en Operaciones`,
+    r.tareas && `${r.tareas} tareas actualizadas`,
     r.creados && `${r.creados} traídos de Google`,
     r.actualizados && `${r.actualizados} actualizados`,
     r.borrados && `${r.borrados} borrados`,
@@ -135,7 +135,7 @@ export default function CalendariosGoogle() {
         {(e) => (
           <>
             <p className="small muted">
-              Cada evento del panel se guarda en el calendario de su etiqueta, con el color de su cliente; las tareas con fecha van como día completo a Operaciones. Lo que se carga
+              Cada evento del panel se guarda en el calendario de su etiqueta, con el color de su cliente; las tareas con fecha van como día completo al calendario que tengan elegido (Historias, Posteos o Edición). Lo que se carga
               directo en estos calendarios aparece en el panel, con el cliente reconocido por el color o por el título.
             </p>
             <div>

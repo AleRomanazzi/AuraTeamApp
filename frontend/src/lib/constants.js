@@ -104,11 +104,18 @@ export const COLORES_GOOGLE = [
 ]
 
 export const ETIQUETAS = [
-  { value: 'operaciones', label: 'Operaciones' },
+  { value: 'historias', label: 'Historias' },
+  { value: 'posteos', label: 'Posteos' },
+  { value: 'edicion', label: 'Edición' },
   { value: 'coberturas', label: 'Coberturas' },
   { value: 'reuniones', label: 'Reuniones & Briefing' },
   { value: 'ceos', label: 'AuraTeam CEOs', soloAdmin: true },
 ]
+
+// Calendarios de Google a los que puede ir una tarea con fecha.
+export const ETIQUETAS_TAREA = ETIQUETAS.filter((e) => ['historias', 'posteos', 'edicion'].includes(e.value))
+
+export const DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export const COLORES = ['#3b82f6', '#818cf8', '#34d399', '#fbbf24', '#f87171', '#22d3ee', '#f472b6', '#94a3b8']
 

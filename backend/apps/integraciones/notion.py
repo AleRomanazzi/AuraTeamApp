@@ -358,6 +358,19 @@ def vincular_clientes() -> dict:
     }
 
 
+def enviar_recurrentes() -> int:
+    """Sube las tareas generadas por plantillas recurrentes que todavía no tienen página."""
+    n = 0
+    for pk in Tarea.objects.filter(notion_page_id__isnull=True, recurrente__isnull=False).values_list('pk', flat=True):
+        # El bloqueo evita que dos sincronizaciones simultáneas creen dos páginas para la misma tarea.
+        with transaction.atomic():
+            tarea = Tarea.objects.select_for_update(skip_locked=True).filter(pk=pk, notion_page_id__isnull=True).first()
+            if tarea:
+                enviar_tarea(tarea)
+                n += 1
+    return n
+
+
 def reenviar_tareas(filtro) -> int:
     """Vuelve a enviar a Notion tareas ya vinculadas (p. ej. tras vincular su cliente o una persona)."""
     n = 0
@@ -434,6 +447,8 @@ def sincronizar(completa=False) -> dict:
             for tarea in pendientes.select_related('cliente'):
                 enviar_tarea(tarea)
                 resumen['enviadas'] += 1
+        else:
+            resumen['enviadas'] = enviar_recurrentes()
     except NotionError as e:
         registrar_error(str(e))
         raise

@@ -33,12 +33,19 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
   - `clientes`: Cliente, Contrato, Cobro (generación de cobros, registrar pago, ajustes de precio).
   - `equipo`: Persona, Tarea, AsignacionTarea, AsignacionCliente, Liquidacion. Los repartos de un cobro entre el
     equipo son **manuales** (`services.repartir_cobro`); las asignaciones fijas son solo referencia.
+    `TareaRecurrente`: plantillas (p. ej. historias diarias) que `services.generar_recurrentes` convierte en tareas con
+    una semana de anticipación al listar tareas o abrir Mi panel; Notion y Google las reciben en la sincronización
+    incremental.
   - `finanzas`: transacciones (ingresos/egresos) y categorías. `servicios`: suscripciones. `stats`: reportes.
   - `integraciones`: sincronización de Tareas con Notion en los dos sentidos (`notion.py`). Panel → Notion al guardar
     desde la API; Notion → panel por webhook (`/api/notion/webhook/`), incremental al abrir Tareas y completa manual.
     Nombres de propiedades/opciones de Notion como constantes al inicio de `notion.py`: si Claude los cambia en Notion,
     hay que actualizarlos ahí. Un fallo de Notion nunca debe impedir guardar en el panel.
-  - `calendario`, `core` (permisos `IsAdmin`, comandos), `api` (config, export/import).
+  - `calendario`: eventos del panel y Google Calendar (`google_calendar.py`). Cada etiqueta (CEOs, Coberturas,
+    Historias, Posteos, Edición, Reuniones & Briefing) es un calendario de la cuenta de la agencia; el cliente se
+    distingue por el color del evento (`Cliente.google_color`). Las tareas con fecha van como día completo al
+    calendario de su etiqueta. CEOs es solo para admins. Un fallo de Google nunca debe impedir guardar en el panel.
+  - `core` (permisos `IsAdmin`, comandos), `api` (config, export/import).
 - **Frontend** (`frontend/`): React 19 + Vite + react-query + zustand, CSS propio en `src/styles/` (sin Tailwind).
   - Claves de react-query en `src/lib/queryKeys.js`; tras mover dinero invalidá con `invalidar(qc, DINERO)`.
   - Acciones destructivas pasan por `confirmar(...)` (`src/store/confirmStore`).

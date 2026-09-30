@@ -1,10 +1,44 @@
+from datetime import timedelta
+
 from django.db import transaction
+from django.db.models import Q
 from rest_framework.exceptions import ValidationError
 
 from apps.core.utils import today
 from apps.finanzas.models import CATEGORIA_HONORARIOS, Categoria, Transaccion
 
-from .models import Liquidacion
+from .models import AsignacionTarea, Liquidacion, Tarea, TareaRecurrente
+
+# Las recurrentes se generan con esta anticipación; Notion y Google las reciben en la siguiente sincronización.
+DIAS_RECURRENTES = 7
+
+
+def generar_recurrentes() -> int:
+    """Crea las tareas de las plantillas activas hasta dentro de DIAS_RECURRENTES días. Devuelve cuántas creó."""
+    hoy = today()
+    hasta = hoy + timedelta(days=DIAS_RECURRENTES)
+    pendientes = TareaRecurrente.objects.filter(activa=True).filter(Q(generada_hasta__isnull=True) | Q(generada_hasta__lt=hasta))
+    creadas = 0
+    for pk in pendientes.values_list('pk', flat=True):
+        with transaction.atomic():
+            p = TareaRecurrente.objects.select_for_update(of=('self',)).filter(pk=pk, activa=True).order_by().first()
+            if p is None or (p.generada_hasta and p.generada_hasta >= hasta):
+                continue
+            personas = list(p.personas.all())
+            dia = max(p.generada_hasta + timedelta(days=1), hoy) if p.generada_hasta else hoy
+            while dia <= hasta:
+                if dia.weekday() in p.dias:
+                    for i in range(1, p.por_dia + 1):
+                        tarea = Tarea.objects.create(
+                            titulo=f'{p.titulo} {i}/{p.por_dia}' if p.por_dia > 1 else p.titulo,
+                            descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
+                            etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
+                        )
+                        AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=x, tarea=tarea) for x in personas])
+                        creadas += 1
+                dia += timedelta(days=1)
+            TareaRecurrente.objects.filter(pk=p.pk).update(generada_hasta=hasta)
+    return creadas
 
 
 @transaction.atomic

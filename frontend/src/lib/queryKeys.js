@@ -18,6 +18,7 @@ export const QK = {
   liquidaciones: (params) => ['liquidaciones', params],
   liquidacionesResumen: (params) => ['liquidaciones', 'resumen', params],
   tareas: (params) => ['tareas', params],
+  recurrentes: ['tareas-recurrentes'],
   servicios: (mes) => ['servicios', mes],
   serviciosResumen: ['servicios', 'resumen'],
   calEventos: (params) => ['cal-eventos', params],

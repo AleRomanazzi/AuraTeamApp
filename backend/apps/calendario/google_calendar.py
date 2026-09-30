@@ -1,7 +1,8 @@
 """Eventos y tareas del panel en los calendarios (etiquetas) de la cuenta de Google de la agencia.
 
-Cada evento va al calendario de su etiqueta (CEOs, Coberturas, Operaciones, Reuniones & Briefing) con el color de su
-cliente; las tareas con fecha van como eventos de día completo a Operaciones. Panel → Google al guardar desde la API;
+Cada evento va al calendario de su etiqueta (CEOs, Coberturas, Historias, Posteos, Edición, Reuniones & Briefing) con el
+color de su cliente; las tareas con fecha van como eventos de día completo al calendario de su etiqueta (Historias,
+Posteos o Edición). Panel → Google al guardar desde la API;
 Google → panel con la sincronización incremental (syncToken de cada calendario) al abrir Tareas o Calendario, y
 completa desde Configuración → Google. En lo cargado directo en Google, el cliente se reconoce por el color del evento
 o por sus palabras clave en el título.
@@ -17,13 +18,14 @@ from urllib.parse import quote
 
 import httpx
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.accounts import google
 from apps.clientes.models import Cliente
-from apps.equipo.models import Tarea
+from apps.equipo.models import ETIQUETAS_TAREA, Tarea
 
 from .models import ETIQUETAS, ETIQUETAS_PRIVADAS, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
 
@@ -39,7 +41,15 @@ ENVIAR_DESDE = timedelta(days=30)
 COLOR_DEFECTO = EventoUnico._meta.get_field('color').default
 ETIQUETAS_NOMBRE = dict(ETIQUETAS)
 # Cómo reconocer cada etiqueta por el nombre del calendario (sin tildes ni espacios).
-PISTAS_ETIQUETA = {'ceos': ('ceo',), 'coberturas': ('cobertura',), 'operaciones': ('operacion',), 'reuniones': ('reunion', 'briefing')}
+PISTAS_ETIQUETA = {
+    'ceos': ('ceo',),
+    'coberturas': ('cobertura',),
+    'historias': ('historia', 'operacion'),
+    'posteos': ('posteo',),
+    'edicion': ('edicion',),
+    'reuniones': ('reunion', 'briefing'),
+}
+ETIQUETAS_DE_TAREAS = [e for e, _ in ETIQUETAS_TAREA]
 MIN_PALABRA = 3
 
 
@@ -311,7 +321,7 @@ def _cuerpo_tarea(t: Tarea) -> dict:
 
 
 def _huella_tarea(t: Tarea) -> str:
-    return hashlib.sha256(json.dumps(_cuerpo_tarea(t), sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([t.etiqueta, _cuerpo_tarea(t)], sort_keys=True).encode()).hexdigest()
 
 
 def _tarea_al_dia(t: Tarea) -> bool:
@@ -320,24 +330,38 @@ def _tarea_al_dia(t: Tarea) -> bool:
     return bool(t.google_event_id) and t.google_huella == _huella_tarea(t)
 
 
+def _calendario_de_tarea(cal_id: str) -> str:
+    return cal_id or calendario_de('historias')
+
+
 def enviar_tarea(t: Tarea):
     if _tarea_al_dia(t):
         return
-    cal = calendario_de('operaciones')
     if not _va_al_calendario(t):
-        borrar_evento(cal, t.google_event_id)
-        t.google_event_id = t.google_huella = ''
+        borrar_evento(_calendario_de_tarea(t.google_calendar_id), t.google_event_id)
+        t.google_event_id = t.google_calendar_id = t.google_huella = ''
     else:
+        destino = calendario_de(t.etiqueta)
+        gid = t.google_event_id
+        if gid:
+            origen = _calendario_de_tarea(t.google_calendar_id)
+            if origen != destino:
+                try:
+                    _request('POST', f'{_cal(origen)}/events/{_q(gid)}/move', params={'destination': destino})
+                except NoEncontrado:
+                    gid = ''
         data = None
-        if t.google_event_id:
+        if gid:
             try:
-                data = _request('PATCH', f'{_cal(cal)}/events/{_q(t.google_event_id)}', _cuerpo_tarea(t))
+                data = _request('PATCH', f'{_cal(destino)}/events/{_q(gid)}', _cuerpo_tarea(t))
             except NoEncontrado:
                 data = None
         if data is None:
-            data = _insertar(cal, _cuerpo_tarea(t))
-        t.google_event_id, t.google_huella = data['id'], _huella_tarea(t)
-    Tarea.objects.filter(pk=t.pk).update(google_event_id=t.google_event_id, google_huella=t.google_huella)
+            data = _insertar(destino, _cuerpo_tarea(t))
+        t.google_event_id, t.google_calendar_id, t.google_huella = data['id'], destino, _huella_tarea(t)
+    Tarea.objects.filter(pk=t.pk).update(
+        google_event_id=t.google_event_id, google_calendar_id=t.google_calendar_id, google_huella=t.google_huella
+    )
 
 
 def al_guardar_tarea(t: Tarea):
@@ -345,19 +369,26 @@ def al_guardar_tarea(t: Tarea):
         _seguro(enviar_tarea, t)
 
 
-def al_borrar_tarea(gid: str):
+def al_borrar_tarea(gid: str, cal_id: str = ''):
     if configurado() and gid:
-        _seguro(lambda: borrar_evento(calendario_de('operaciones'), gid))
+        _seguro(lambda: borrar_evento(_calendario_de_tarea(cal_id), gid))
 
 
 def enviar_tareas() -> int:
+    """Sube las tareas desactualizadas cuyas etiquetas ya tienen calendario elegido."""
+    vinculadas = set(CalendarioGoogle.objects.values_list('etiqueta', flat=True))
     enviadas = 0
     desde = timezone.localdate() - ENVIAR_DESDE
     candidatas = Tarea.objects.filter(~Q(google_event_id='') | Q(fecha_limite__gte=desde)).select_related('cliente')
     for t in candidatas:
-        if not _tarea_al_dia(t):
-            enviar_tarea(t)
-            enviadas += 1
+        if (t.etiqueta not in vinculadas and _va_al_calendario(t)) or _tarea_al_dia(t):
+            continue
+        # El bloqueo evita que dos sincronizaciones simultáneas creen dos eventos para la misma tarea.
+        with transaction.atomic():
+            t = Tarea.objects.select_for_update(skip_locked=True, of=('self',)).select_related('cliente').filter(pk=t.pk).first()
+            if t and not _tarea_al_dia(t):
+                enviar_tarea(t)
+                enviadas += 1
     return enviadas
 
 
@@ -470,7 +501,7 @@ def sincronizar(completa=False) -> dict:
             vincular_etiquetas()
         if completa:
             resumen['enviados'] = enviar_pendientes()
-        if CalendarioGoogle.objects.filter(etiqueta='operaciones').exists():
+        if CalendarioGoogle.objects.filter(etiqueta__in=ETIQUETAS_DE_TAREAS).exists():
             resumen['tareas'] = enviar_tareas()
         _traer(resumen, inicio)
     except google.GoogleError as e:

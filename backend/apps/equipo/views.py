@@ -13,7 +13,7 @@ from apps.calendario import google_calendar
 from apps.integraciones import notion
 
 from . import services
-from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea
+from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea, TareaRecurrente
 from .serializers import (
     AsignacionClienteSerializer,
     LiquidacionSerializer,
@@ -21,6 +21,7 @@ from .serializers import (
     PersonaBasicaSerializer,
     PersonaSerializer,
     RepartirSerializer,
+    TareaRecurrenteSerializer,
     TareaSerializer,
     es_tarea_propia,
 )
@@ -98,6 +99,10 @@ class TareaViewSet(viewsets.ModelViewSet):
             qs = qs.filter(Q(titulo__icontains=p['q']) | Q(descripcion__icontains=p['q']))
         return qs.distinct()
 
+    def list(self, request, *args, **kwargs):
+        services.generar_recurrentes()
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         user = self.request.user
         tarea = serializer.save(user=user)
@@ -119,10 +124,27 @@ class TareaViewSet(viewsets.ModelViewSet):
         google_calendar.al_guardar_tarea(tarea)
 
     def perform_destroy(self, instance):
-        page_id, gid = instance.notion_page_id, instance.google_event_id
+        page_id, gid, cal_id = instance.notion_page_id, instance.google_event_id, instance.google_calendar_id
         instance.delete()
         notion.al_borrar_tarea(page_id)
-        google_calendar.al_borrar_tarea(gid)
+        google_calendar.al_borrar_tarea(gid, cal_id)
+
+
+class TareaRecurrenteViewSet(viewsets.ModelViewSet):
+    """Plantillas de tareas recurrentes. Borrar una plantilla no borra las tareas que ya generó."""
+
+    serializer_class = TareaRecurrenteSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = None
+    queryset = TareaRecurrente.objects.select_related('cliente').prefetch_related('personas')
+
+    def perform_create(self, serializer):
+        serializer.save()
+        services.generar_recurrentes()
+
+    def perform_update(self, serializer):
+        serializer.save()
+        services.generar_recurrentes()
 
 
 class AsignacionClienteViewSet(viewsets.ModelViewSet):

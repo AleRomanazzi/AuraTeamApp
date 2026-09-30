@@ -4,7 +4,9 @@ from django.db import models
 ETIQUETAS = [
     ('ceos', 'AuraTeam CEOs'),
     ('coberturas', 'Coberturas'),
-    ('operaciones', 'Operaciones'),
+    ('historias', 'Historias'),
+    ('posteos', 'Posteos'),
+    ('edicion', 'Edición'),
     ('reuniones', 'Reuniones & Briefing'),
 ]
 # Solo las ven los administradores (socios), en el panel y en Google.
@@ -19,7 +21,7 @@ class EventoUnico(models.Model):
     descripcion = models.TextField(blank=True)
     color = models.CharField(max_length=12, default='#7c6fff')
     cliente = models.ForeignKey('clientes.Cliente', null=True, blank=True, on_delete=models.SET_NULL, related_name='eventos')
-    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS, default='operaciones')
+    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS, default='historias')
     google_event_id = models.CharField(max_length=255, blank=True)
     # Vacío con google_event_id cargado = calendario principal de la cuenta (que es AuraTeam CEOs).
     google_calendar_id = models.CharField(max_length=255, blank=True)

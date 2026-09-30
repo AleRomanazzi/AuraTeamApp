@@ -24,6 +24,8 @@ ESTADO_LIQUIDACION = [
     ('anulada', 'Anulada'),
 ]
 ORIGEN_LIQUIDACION = [('asignacion', 'Asignación a cliente'), ('base', 'Honorario base'), ('manual', 'Manual')]
+# Etiquetas (calendarios de Google) a las que puede ir una tarea con fecha; subconjunto de calendario.ETIQUETAS.
+ETIQUETAS_TAREA = [('historias', 'Historias'), ('posteos', 'Posteos'), ('edicion', 'Edición')]
 
 
 class Persona(models.Model):
@@ -60,12 +62,38 @@ class Tarea(models.Model):
     notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
     # Huella de los campos sincronizados la última vez que panel y Notion coincidieron: evita reaplicar ecos propios.
     notion_huella = models.CharField(max_length=64, blank=True)
-    # Evento de día completo en la etiqueta Operaciones de Google Calendar.
+    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS_TAREA, default='historias')
+    recurrente = models.ForeignKey('TareaRecurrente', null=True, blank=True, on_delete=models.SET_NULL, related_name='tareas')
+    # Evento de día completo en el calendario de Google de su etiqueta. Vacío con google_event_id cargado = Historias
+    # (antes Operaciones).
     google_event_id = models.CharField(max_length=255, blank=True)
+    google_calendar_id = models.CharField(max_length=255, blank=True)
     google_huella = models.CharField(max_length=64, blank=True)
 
     class Meta:
         ordering = ['estado', 'fecha_limite', 'titulo']
+
+    def __str__(self):
+        return self.titulo
+
+
+class TareaRecurrente(models.Model):
+    """Plantilla que genera sola sus tareas: `por_dia` tareas en cada día de `dias` (0 = lunes)."""
+
+    titulo = models.CharField(max_length=180)
+    descripcion = models.TextField(blank=True)
+    cliente = models.ForeignKey('clientes.Cliente', null=True, blank=True, on_delete=models.CASCADE, related_name='recurrentes')
+    personas = models.ManyToManyField(Persona, blank=True, related_name='recurrentes')
+    dias = models.JSONField(default=list)
+    por_dia = models.PositiveSmallIntegerField(default=1)
+    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS_TAREA, default='historias')
+    prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
+    activa = models.BooleanField(default=True)
+    generada_hasta = models.DateField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['cliente__nombre', 'titulo']
 
     def __str__(self):
         return self.titulo

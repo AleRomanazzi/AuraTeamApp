@@ -11,7 +11,7 @@ from apps.calendario.views import (
     VencimientosView,
 )
 from apps.clientes.views import ClienteViewSet, CobroViewSet, ContratoViewSet, RentabilidadView
-from apps.equipo.views import AsignacionClienteViewSet, LiquidacionViewSet, PersonaViewSet, TareaViewSet
+from apps.equipo.views import AsignacionClienteViewSet, LiquidacionViewSet, PersonaViewSet, TareaRecurrenteViewSet, TareaViewSet
 from apps.finanzas.views import AdjuntoViewSet, CategoriaViewSet, TransaccionViewSet
 from apps.servicios.views import ServicioViewSet
 from apps.stats.views import AnalisisStatsViewSet, ImagenAnalisisViewSet
@@ -27,6 +27,7 @@ router.register('contratos', ContratoViewSet, basename='contrato')
 router.register('cobros', CobroViewSet, basename='cobro')
 router.register('servicios', ServicioViewSet, basename='servicio')
 router.register('personal', PersonaViewSet, basename='persona')
+router.register('tareas-recurrentes', TareaRecurrenteViewSet, basename='tarea-recurrente')
 router.register('tareas', TareaViewSet, basename='tarea')
 router.register('asignaciones-cliente', AsignacionClienteViewSet, basename='asignacion-cliente')
 router.register('liquidaciones', LiquidacionViewSet, basename='liquidacion')

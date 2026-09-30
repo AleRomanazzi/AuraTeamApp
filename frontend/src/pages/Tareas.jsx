@@ -61,6 +61,7 @@ export default function Tareas() {
       return data
     },
     staleTime: 60_000,
+    refetchInterval: (query) => (query.state.data?.pendientes ? 65_000 : false),
     retry: false,
   })
   useSyncCalendario()

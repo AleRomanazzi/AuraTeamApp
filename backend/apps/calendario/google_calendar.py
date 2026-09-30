@@ -38,6 +38,8 @@ TRAER_DESDE = timedelta(days=30)
 TRAER_HASTA = timedelta(days=180)
 DURACION_DEFECTO = timedelta(hours=1)
 ENVIAR_DESDE = timedelta(days=30)
+# Tope de tareas que sube cada sincronización, para no pasar el timeout del servidor; el resto va en las siguientes.
+LIMITE_TAREAS = 40
 COLOR_DEFECTO = EventoUnico._meta.get_field('color').default
 ETIQUETAS_NOMBRE = dict(ETIQUETAS)
 # Cómo reconocer cada etiqueta por el nombre del calendario (sin tildes ni espacios).
@@ -374,14 +376,20 @@ def al_borrar_tarea(gid: str, cal_id: str = ''):
         _seguro(lambda: borrar_evento(_calendario_de_tarea(cal_id), gid))
 
 
-def enviar_tareas() -> int:
-    """Sube las tareas desactualizadas cuyas etiquetas ya tienen calendario elegido."""
+def enviar_tareas() -> tuple[int, int]:
+    """Sube de a LIMITE_TAREAS (las más próximas primero) las tareas desactualizadas cuyas etiquetas ya tienen
+    calendario elegido. Devuelve (enviadas, pendientes)."""
     vinculadas = set(CalendarioGoogle.objects.values_list('etiqueta', flat=True))
-    enviadas = 0
+    enviadas = pendientes = 0
     desde = timezone.localdate() - ENVIAR_DESDE
-    candidatas = Tarea.objects.filter(~Q(google_event_id='') | Q(fecha_limite__gte=desde)).select_related('cliente')
+    candidatas = (
+        Tarea.objects.filter(~Q(google_event_id='') | Q(fecha_limite__gte=desde)).select_related('cliente').order_by('fecha_limite', 'pk')
+    )
     for t in candidatas:
         if (t.etiqueta not in vinculadas and _va_al_calendario(t)) or _tarea_al_dia(t):
+            continue
+        if enviadas >= LIMITE_TAREAS:
+            pendientes += 1
             continue
         # El bloqueo evita que dos sincronizaciones simultáneas creen dos eventos para la misma tarea.
         with transaction.atomic():
@@ -389,7 +397,7 @@ def enviar_tareas() -> int:
             if t and not _tarea_al_dia(t):
                 enviar_tarea(t)
                 enviadas += 1
-    return enviadas
+    return enviadas, pendientes
 
 
 # --- Google → Panel --------------------------------------------------------------------------------------------------
@@ -502,7 +510,7 @@ def sincronizar(completa=False) -> dict:
         if completa:
             resumen['enviados'] = enviar_pendientes()
         if CalendarioGoogle.objects.filter(etiqueta__in=ETIQUETAS_DE_TAREAS).exists():
-            resumen['tareas'] = enviar_tareas()
+            resumen['tareas'], resumen['pendientes'] = enviar_tareas()
         _traer(resumen, inicio)
     except google.GoogleError as e:
         registrar_error(str(e))

@@ -260,6 +260,21 @@ def test_sin_calendario_de_la_etiqueta_la_sincronizacion_sigue(gcal, clientes):
 
 
 @pytest.mark.django_db
+def test_las_tareas_se_suben_de_a_tandas(gcal, clientes, monkeypatch):
+    monkeypatch.setattr(google_calendar, 'LIMITE_TAREAS', 2)
+    google_calendar.sincronizar()
+    manana = timezone.localdate() + timedelta(days=1)
+    for i in range(5):
+        Tarea.objects.create(titulo=f'Historia {i}', fecha_limite=manana + timedelta(days=i))
+    r = _incremental()
+    assert (r['tareas'], r['pendientes']) == (2, 3)
+    assert set(Tarea.objects.exclude(google_event_id='').values_list('titulo', flat=True)) == {'Historia 0', 'Historia 1'}
+    _incremental()
+    r = _incremental()
+    assert (r['tareas'], r['pendientes']) == (1, 0)
+
+
+@pytest.mark.django_db
 def test_cambiar_el_color_del_cliente_repinta(api_client, gcal, clientes):
     ev = _evento(api_client, etiqueta='coberturas', cliente=clientes['cycles'].id)
     api_client.patch(f"/api/clientes/{clientes['cycles'].id}/", {'google_color': '7'}, format='json')

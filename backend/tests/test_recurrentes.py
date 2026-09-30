@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -7,6 +7,14 @@ from apps.equipo import services
 from apps.equipo.models import Tarea, TareaRecurrente
 
 LUN_A_SAB = [0, 1, 2, 3, 4, 5]
+MIE_30_SEP = date(2026, 9, 30)
+
+
+@pytest.fixture
+def hoy(monkeypatch):
+    actual = {'dia': MIE_30_SEP}
+    monkeypatch.setattr(services, 'today', lambda: actual['dia'])
+    return actual
 
 
 def _plantilla(api_client, persona, **extra):
@@ -17,14 +25,20 @@ def _plantilla(api_client, persona, **extra):
     return TareaRecurrente.objects.get(pk=r.data['id'])
 
 
-def _dias_esperados(hoy):
-    return [hoy + timedelta(days=i) for i in range(services.DIAS_RECURRENTES + 1) if (hoy + timedelta(days=i)).weekday() in LUN_A_SAB]
+def _lun_a_sab(desde, hasta):
+    return [desde + timedelta(days=i) for i in range((hasta - desde).days + 1) if (desde + timedelta(days=i)).weekday() in LUN_A_SAB]
+
+
+def test_fin_de_generacion_cubre_el_mes_de_la_semana_proxima():
+    assert services.fin_de_generacion(MIE_30_SEP) == date(2026, 10, 31)
+    assert services.fin_de_generacion(date(2026, 10, 20)) == date(2026, 10, 31)
+    assert services.fin_de_generacion(date(2026, 10, 25)) == date(2026, 11, 30)
 
 
 @pytest.mark.django_db
-def test_la_plantilla_genera_tres_tareas_por_dia_de_lunes_a_sabado(api_client, persona):
+def test_la_plantilla_genera_tres_tareas_por_dia_de_lunes_a_sabado_hasta_fin_de_mes(api_client, persona, hoy):
     p = _plantilla(api_client, persona)
-    dias = _dias_esperados(services.today())
+    dias = _lun_a_sab(MIE_30_SEP, date(2026, 10, 31))
     tareas = Tarea.objects.filter(recurrente=p).order_by('fecha_limite', 'titulo')
     assert tareas.count() == 3 * len(dias)
     assert sorted({t.fecha_limite for t in tareas}) == dias
@@ -37,21 +51,19 @@ def test_la_plantilla_genera_tres_tareas_por_dia_de_lunes_a_sabado(api_client, p
 
 
 @pytest.mark.django_db
-def test_al_pasar_los_dias_genera_solo_lo_que_falta(api_client, persona, monkeypatch):
+def test_la_ultima_semana_del_mes_genera_el_mes_siguiente(api_client, persona, hoy):
     p = _plantilla(api_client, persona)
-    hoy = services.today()
     antes = Tarea.objects.count()
-    monkeypatch.setattr(services, 'today', lambda: hoy + timedelta(days=1))
+    hoy['dia'] = date(2026, 10, 25)
     creadas = services.generar_recurrentes()
-    nuevo = hoy + timedelta(days=services.DIAS_RECURRENTES + 1)
-    assert creadas == (3 if nuevo.weekday() in LUN_A_SAB else 0)
+    assert creadas == 3 * len(_lun_a_sab(date(2026, 11, 1), date(2026, 11, 30)))
     assert Tarea.objects.count() == antes + creadas
     p.refresh_from_db()
-    assert p.generada_hasta == nuevo
+    assert p.generada_hasta == date(2026, 11, 30)
 
 
 @pytest.mark.django_db
-def test_plantilla_inactiva_no_genera_y_validaciones(api_client, persona):
+def test_plantilla_inactiva_no_genera_y_validaciones(api_client, persona, hoy):
     r = api_client.post('/api/tareas-recurrentes/', {'titulo': 'X', 'dias': [], 'activa': False}, format='json')
     assert r.status_code == 400 and 'dias' in r.data
     r = api_client.post('/api/tareas-recurrentes/', {'titulo': 'X', 'dias': [7]}, format='json')
@@ -63,4 +75,3 @@ def test_plantilla_inactiva_no_genera_y_validaciones(api_client, persona):
 @pytest.mark.django_db
 def test_solo_admin_gestiona_plantillas(equipo_client):
     assert equipo_client.get('/api/tareas-recurrentes/').status_code == 403
-

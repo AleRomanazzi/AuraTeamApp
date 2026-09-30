@@ -33,9 +33,9 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
   - `clientes`: Cliente, Contrato, Cobro (generación de cobros, registrar pago, ajustes de precio).
   - `equipo`: Persona, Tarea, AsignacionTarea, AsignacionCliente, Liquidacion. Los repartos de un cobro entre el
     equipo son **manuales** (`services.repartir_cobro`); las asignaciones fijas son solo referencia.
-    `TareaRecurrente`: plantillas (p. ej. historias diarias) que `services.generar_recurrentes` convierte en tareas con
-    una semana de anticipación al listar tareas o abrir Mi panel; Notion y Google las reciben en la sincronización
-    incremental.
+    `TareaRecurrente`: plantillas (p. ej. historias diarias) que `services.generar_recurrentes` convierte en tareas
+    hasta fin del mes en curso (desde su última semana, también el siguiente) al listar tareas o abrir Mi panel;
+    Notion y Google las reciben de a tandas en las sincronizaciones incrementales.
   - `finanzas`: transacciones (ingresos/egresos) y categorías. `servicios`: suscripciones. `stats`: reportes.
   - `integraciones`: sincronización de Tareas con Notion en los dos sentidos (`notion.py`). Panel → Notion al guardar
     desde la API; Notion → panel por webhook (`/api/notion/webhook/`), incremental al abrir Tareas y completa manual.

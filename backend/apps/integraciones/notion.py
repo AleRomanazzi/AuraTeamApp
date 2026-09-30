@@ -36,6 +36,8 @@ TIMEOUT = 20
 LIMITE_TEXTO = 2000
 INTERVALO_INCREMENTAL = timedelta(seconds=60)
 DIAS_HECHAS_A_ENVIAR = 30
+# Tope de tareas recurrentes que sube cada sincronización incremental, para no pasar el timeout del servidor.
+LIMITE_ENVIO = 25
 
 P_TITULO = 'Tarea'
 P_NOTAS = 'Notas'
@@ -358,10 +360,14 @@ def vincular_clientes() -> dict:
     }
 
 
+def _recurrentes_sin_pagina():
+    return Tarea.objects.filter(notion_page_id__isnull=True, recurrente__isnull=False)
+
+
 def enviar_recurrentes() -> int:
-    """Sube las tareas generadas por plantillas recurrentes que todavía no tienen página."""
+    """Sube (de a LIMITE_ENVIO, las más próximas primero) las tareas recurrentes que todavía no tienen página."""
     n = 0
-    for pk in Tarea.objects.filter(notion_page_id__isnull=True, recurrente__isnull=False).values_list('pk', flat=True):
+    for pk in _recurrentes_sin_pagina().values_list('pk', flat=True)[:LIMITE_ENVIO]:
         # El bloqueo evita que dos sincronizaciones simultáneas creen dos páginas para la misma tarea.
         with transaction.atomic():
             tarea = Tarea.objects.select_for_update(skip_locked=True).filter(pk=pk, notion_page_id__isnull=True).first()
@@ -449,6 +455,7 @@ def sincronizar(completa=False) -> dict:
                 resumen['enviadas'] += 1
         else:
             resumen['enviadas'] = enviar_recurrentes()
+            resumen['pendientes'] = _recurrentes_sin_pagina().count()
     except NotionError as e:
         registrar_error(str(e))
         raise

@@ -175,15 +175,20 @@ def test_incremental_se_limita_y_la_puede_pedir_el_equipo(equipo_client, falso):
 
 
 @pytest.mark.django_db
-def test_las_recurrentes_llegan_a_notion_en_la_incremental(api_client, falso, persona):
-    from apps.equipo.services import DIAS_RECURRENTES
-
+def test_las_recurrentes_llegan_a_notion_de_a_tandas(api_client, falso, persona, monkeypatch):
+    monkeypatch.setattr(notion, 'LIMITE_ENVIO', 10)
     r = api_client.post('/api/tareas-recurrentes/', {'titulo': 'Historia', 'dias': list(range(7)), 'personas': [persona.id]}, format='json')
-    assert Tarea.objects.filter(recurrente=r.data['id'], notion_page_id__isnull=True).count() == DIAS_RECURRENTES + 1
-    assert notion.sincronizar()['enviadas'] == DIAS_RECURRENTES + 1
-    assert not Tarea.objects.filter(notion_page_id__isnull=True).exists()
-    EstadoNotion.objects.filter(pk=1).update(ultima_sync=None)
-    assert notion.sincronizar()['enviadas'] == 0
+    total = Tarea.objects.filter(recurrente=r.data['id'], notion_page_id__isnull=True).count()
+    assert total > 10
+    primera = notion.sincronizar()
+    assert primera['enviadas'] == 10 and primera['pendientes'] == total - 10
+    enviadas = 10
+    while enviadas < total:
+        EstadoNotion.objects.filter(pk=1).update(ultima_sync=None)
+        enviadas += notion.sincronizar()['enviadas']
+    assert enviadas == total and not Tarea.objects.filter(notion_page_id__isnull=True).exists()
+    # Las más próximas salen primero.
+    assert Tarea.objects.order_by('fecha_limite').first().notion_page_id in falso.paginas
 
 
 @pytest.mark.django_db

@@ -1,4 +1,5 @@
-from datetime import timedelta
+from calendar import monthrange
+from datetime import date, timedelta
 
 from django.db import transaction
 from django.db.models import Q
@@ -9,14 +10,20 @@ from apps.finanzas.models import CATEGORIA_HONORARIOS, Categoria, Transaccion
 
 from .models import AsignacionTarea, Liquidacion, Tarea, TareaRecurrente
 
-# Las recurrentes se generan con esta anticipación; Notion y Google las reciben en la siguiente sincronización.
+# Las recurrentes cubren hasta fin del mes en que cae hoy + DIAS_RECURRENTES (así el mes siguiente queda armado desde
+# su última semana). Notion y Google las reciben de a tandas en las siguientes sincronizaciones.
 DIAS_RECURRENTES = 7
 
 
+def fin_de_generacion(hoy):
+    limite = hoy + timedelta(days=DIAS_RECURRENTES)
+    return date(limite.year, limite.month, monthrange(limite.year, limite.month)[1])
+
+
 def generar_recurrentes() -> int:
-    """Crea las tareas de las plantillas activas hasta dentro de DIAS_RECURRENTES días. Devuelve cuántas creó."""
+    """Crea las tareas de las plantillas activas hasta `fin_de_generacion`. Devuelve cuántas creó."""
     hoy = today()
-    hasta = hoy + timedelta(days=DIAS_RECURRENTES)
+    hasta = fin_de_generacion(hoy)
     pendientes = TareaRecurrente.objects.filter(activa=True).filter(Q(generada_hasta__isnull=True) | Q(generada_hasta__lt=hasta))
     creadas = 0
     for pk in pendientes.values_list('pk', flat=True):

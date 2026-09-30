@@ -13,6 +13,8 @@ export function useSyncCalendario() {
       return data
     },
     staleTime: 60_000,
+    // El servidor sube las tareas de a tandas: mientras queden, se vuelve a pedir pasado el límite de una por minuto.
+    refetchInterval: (query) => (query.state.data?.pendientes ? 65_000 : false),
     retry: false,
   })
 }

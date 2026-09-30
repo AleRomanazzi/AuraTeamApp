@@ -23,6 +23,8 @@ AURA_GOOGLE_REDIRECT_URI = os.getenv("AURA_GOOGLE_REDIRECT_URI", "").strip()
 AURA_GOOGLE_LOGIN_HINT = os.getenv("AURA_GOOGLE_LOGIN_HINT", "").strip()
 # Clave para cifrar el refresh token; si falta se deriva de SECRET_KEY (cambiarla obliga a reconectar).
 AURA_GOOGLE_TOKEN_KEY = os.getenv("AURA_GOOGLE_TOKEN_KEY", "").strip()
+# Para probar en local contra la cuenta real sin escribir en sus calendarios.
+GOOGLE_CALENDAR_SOLO_LECTURA = os.getenv("GOOGLE_CALENDAR_SOLO_LECTURA", "").strip().lower() in ("1", "true", "si")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
 # Notion (integración interna del workspace AuraTeam). Los IDs son de las fuentes de datos (data sources) de las

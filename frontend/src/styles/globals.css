@@ -368,6 +368,14 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .vinculo-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.6fr); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .vinculo-row:last-child { border-bottom: none; }
 .vinculo-row > span { color: var(--text); font-size: 14px; }
+.pintar-lista { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px; }
+.pintar-fila { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.pintar-fila:last-child { border-bottom: none; }
+.pintar-titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+@media (max-width: 600px) {
+  .pintar-fila { flex-wrap: wrap; }
+  .pintar-fila .nowrap { white-space: normal; width: 100%; padding-left: 24px; }
+}
 
 /* ===== Reportes imprimibles ===== */
 .report-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }

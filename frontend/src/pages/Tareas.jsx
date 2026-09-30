@@ -7,6 +7,7 @@ import TableroTareas from '../components/tareas/TableroTareas'
 import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
+import { useSyncCalendario } from '../features/google/useSyncCalendario'
 import { useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { diaDe, lunesDe, sumarDias, todayISO } from '../lib/format'
@@ -60,6 +61,7 @@ export default function Tareas() {
     staleTime: 60_000,
     retry: false,
   })
+  useSyncCalendario()
 
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }) => api.patch(`tareas/${id}/`, { estado }),

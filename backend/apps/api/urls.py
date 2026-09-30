@@ -2,7 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from apps.accounts.views import UsuarioViewSet
-from apps.calendario.views import EventoUnicoViewSet, VencimientosView
+from apps.calendario.views import (
+    EventoUnicoViewSet,
+    GoogleCalendarColoresView,
+    GoogleCalendarEstadoView,
+    GoogleCalendarEtiquetaView,
+    GoogleCalendarSincronizarView,
+    VencimientosView,
+)
 from apps.clientes.views import ClienteViewSet, CobroViewSet, ContratoViewSet, RentabilidadView
 from apps.equipo.views import AsignacionClienteViewSet, LiquidacionViewSet, PersonaViewSet, TareaViewSet
 from apps.finanzas.views import AdjuntoViewSet, CategoriaViewSet, TransaccionViewSet
@@ -33,6 +40,10 @@ urlpatterns = [
     path('mi-panel/', MiPanelView.as_view(), name='api-mi-panel'),
     path('rentabilidad/', RentabilidadView.as_view(), name='api-rentabilidad'),
     path('calendario/vencimientos/', VencimientosView.as_view(), name='api-vencimientos'),
+    path('calendario/google/', GoogleCalendarEstadoView.as_view(), name='api-calendario-google'),
+    path('calendario/google/sincronizar/', GoogleCalendarSincronizarView.as_view(), name='api-calendario-google-sync'),
+    path('calendario/google/etiqueta/', GoogleCalendarEtiquetaView.as_view(), name='api-calendario-google-etiqueta'),
+    path('calendario/google/colores/', GoogleCalendarColoresView.as_view(), name='api-calendario-google-colores'),
     path('me/config/', MeConfigView.as_view(), name='api-me-config'),
     path('me/export/', MeExportView.as_view(), name='api-me-export'),
     path('me/import/', MeImportView.as_view(), name='api-me-import'),

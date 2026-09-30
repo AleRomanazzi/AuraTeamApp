@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import { api } from '../../lib/api'
-import { COLORES, ESTADOS_CLIENTE } from '../../lib/constants'
+import { COLORES, COLORES_GOOGLE, ESTADOS_CLIENTE } from '../../lib/constants'
 import { todayISO } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 
@@ -18,6 +18,8 @@ const VACIO = {
   estado: 'activo',
   fecha_alta: todayISO(),
   color: COLORES[0],
+  google_color: '',
+  palabras_clave: '',
   notas: '',
 }
 
@@ -98,19 +100,23 @@ export default function ClienteForm({ inicial, onClose, onGuardado }) {
           <input value={f.whatsapp} onChange={set('whatsapp')} maxLength={40} inputMode="tel" />
         </Field>
       </div>
-      <Field label="Color">
+      <Field label="Color" hint={`Es también el color de sus eventos en Google Calendar${f.google_color ? ` (${COLORES_GOOGLE.find((c) => c.value === f.google_color)?.label})` : ''}.`}>
         <div className="color-picker">
-          {COLORES.map((c) => (
+          {COLORES_GOOGLE.map((c) => (
             <button
-              key={c}
+              key={c.value}
               type="button"
-              className={`color-swatch${f.color === c ? ' active' : ''}`}
-              style={{ background: c }}
-              aria-label={`Color ${c}`}
-              onClick={() => setF((s) => ({ ...s, color: c }))}
+              className={`color-swatch${f.google_color === c.value ? ' active' : ''}`}
+              style={{ background: c.hex }}
+              aria-label={`Color ${c.label}`}
+              title={c.label}
+              onClick={() => setF((s) => ({ ...s, google_color: c.value, color: c.hex }))}
             />
           ))}
         </div>
+      </Field>
+      <Field label="Palabras clave" hint="Separadas por coma. Sirven para reconocer al cliente en eventos cargados directo en Google (además de su nombre).">
+        <input value={f.palabras_clave} onChange={set('palabras_clave')} maxLength={200} placeholder="Cycles, Ferreyra" />
       </Field>
       <Field label="Notas">
         <textarea rows={3} value={f.notas} onChange={set('notas')} />

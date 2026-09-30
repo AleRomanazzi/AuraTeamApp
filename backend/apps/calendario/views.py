@@ -1,12 +1,32 @@
-from rest_framework import permissions, viewsets
+from django.db.models import Q
+from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import es_admin, persona_de
+from apps.accounts.google import GoogleError
+from apps.core.permissions import IsAdmin, es_admin, persona_de
 from apps.core.utils import aplica_en_mes, fecha_en_mes, money, parse_fecha_param, parse_mes
 
-from .models import EventoUnico
+from . import google_calendar
+from .models import ETIQUETAS, ETIQUETAS_PRIVADAS, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
 from .serializers import EventoUnicoSerializer
+
+
+def eventos_visibles(user):
+    """El admin ve todo. El equipo no ve las etiquetas privadas; del resto, los eventos sin cliente, los de sus
+    clientes (asignados o de sus tareas) y los que creó."""
+    from apps.equipo.models import AsignacionCliente, Tarea
+
+    qs = EventoUnico.objects.select_related('cliente')
+    if es_admin(user):
+        return qs
+    filtro = Q(cliente__isnull=True) | Q(user=user)
+    persona = persona_de(user)
+    if persona:
+        asignados = AsignacionCliente.objects.filter(persona=persona, activo=True).values('cliente_id')
+        de_tareas = Tarea.objects.filter(asignaciones__persona=persona, cliente__isnull=False).exclude(estado='hecha').values('cliente_id')
+        filtro |= Q(cliente_id__in=asignados) | Q(cliente_id__in=de_tareas)
+    return qs.filter(filtro).exclude(etiqueta__in=ETIQUETAS_PRIVADAS)
 
 
 class EventoPermission(permissions.IsAuthenticated):
@@ -24,7 +44,7 @@ class EventoUnicoViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        qs = EventoUnico.objects.select_related('cliente')
+        qs = eventos_visibles(self.request.user)
         p = self.request.query_params
         desde = parse_fecha_param(p.get('desde'), 'desde')
         hasta = parse_fecha_param(p.get('hasta'), 'hasta')
@@ -37,7 +57,101 @@ class EventoUnicoViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        google_calendar.al_guardar_evento(serializer.save(user=self.request.user))
+
+    def perform_update(self, serializer):
+        google_calendar.al_guardar_evento(serializer.save())
+
+    def perform_destroy(self, instance):
+        cal_id, gid = instance.google_calendar_id, instance.google_event_id
+        instance.delete()
+        google_calendar.al_borrar_evento(cal_id, gid)
+
+
+class GoogleCalendarEstadoView(APIView):
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        e = EstadoCalendarioGoogle.get()
+        conectado = google_calendar.configurado()
+        cuenta, error_cuenta = [], None
+        if conectado:
+            try:
+                if CalendarioGoogle.objects.count() < len(ETIQUETAS):
+                    google_calendar.vincular_etiquetas()
+                cuenta = google_calendar.calendarios_de_la_cuenta()
+            except GoogleError as ex:
+                error_cuenta = str(ex)
+        elegidos = {c.etiqueta: c for c in CalendarioGoogle.objects.all()}
+        return Response(
+            {
+                'conectado': conectado,
+                'ultima_sync': e.ultima_sync,
+                'ultima_sync_completa': e.ultima_sync_completa,
+                'ultimo_error': e.ultimo_error or error_cuenta,
+                'ultimo_error_en': e.ultimo_error_en,
+                'etiquetas': [
+                    {
+                        'etiqueta': valor, 'nombre': nombre, 'privada': valor in ETIQUETAS_PRIVADAS,
+                        'calendar_id': elegidos[valor].calendar_id if valor in elegidos else None,
+                        'calendario': elegidos[valor].nombre if valor in elegidos else None,
+                    }
+                    for valor, nombre in ETIQUETAS
+                ],
+                'calendarios': cuenta,
+                'eventos_en_google': EventoUnico.objects.exclude(google_event_id='').count(),
+            }
+        )
+
+
+class GoogleCalendarEtiquetaView(APIView):
+    """Elige a mano qué calendario de la cuenta corresponde a una etiqueta."""
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        etiqueta, calendar_id = request.data.get('etiqueta'), request.data.get('calendar_id')
+        if etiqueta not in dict(ETIQUETAS) or not calendar_id:
+            return Response({'detail': 'Etiqueta o calendario inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            google_calendar.elegir_calendario(etiqueta, calendar_id)
+        except GoogleError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class GoogleCalendarColoresView(APIView):
+    """Vista previa (GET) y aplicación (POST) del color de cliente en eventos que ya existen en Google."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        try:
+            return Response(google_calendar.colores_sugeridos())
+        except GoogleError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+    def post(self, request):
+        eventos = request.data.get('eventos')
+        if not isinstance(eventos, list):
+            return Response({'detail': 'Falta la lista de eventos.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response({'pintados': google_calendar.pintar(eventos)})
+        except GoogleError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class GoogleCalendarSincronizarView(APIView):
+    """Incremental (cualquier usuario, limitada a una por minuto) o completa (solo admin)."""
+
+    def post(self, request):
+        if not google_calendar.configurado():
+            return Response({'omitida': True, 'detail': 'Google no está conectado.'})
+        completa = bool(request.data.get('completa')) and es_admin(request.user)
+        try:
+            return Response(google_calendar.sincronizar(completa=completa))
+        except GoogleError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
 
 class VencimientosView(APIView):

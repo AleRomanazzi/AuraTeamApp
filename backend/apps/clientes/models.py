@@ -10,6 +10,21 @@ from apps.finanzas.models import MEDIO_PAGO_CHOICES
 
 ESTADO_CLIENTE = [('activo', 'Activo'), ('pausado', 'Pausado'), ('baja', 'Baja')]
 
+# Colores de evento de Google Calendar (colorId → nombre, hex); son fijos en la API.
+COLORES_GOOGLE = {
+    '1': ('Lavanda', '#a4bdfc'),
+    '2': ('Salvia', '#7ae7bf'),
+    '3': ('Uva', '#dbadff'),
+    '4': ('Flamenco', '#ff887c'),
+    '5': ('Banana', '#fbd75b'),
+    '6': ('Mandarina', '#ffb878'),
+    '7': ('Pavo real', '#46d6db'),
+    '8': ('Grafito', '#e1e1e1'),
+    '9': ('Arándano', '#5484ed'),
+    '10': ('Albahaca', '#51b749'),
+    '11': ('Tomate', '#dc2127'),
+}
+
 PERIODICIDAD_CONTRATO = [
     ('mensual', 'Mensual'),
     ('bimestral', 'Bimestral'),
@@ -42,6 +57,9 @@ class Cliente(models.Model):
     notas = models.TextField(blank=True)
     creado = models.DateTimeField(auto_now_add=True)
     notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
+    google_color = models.CharField(max_length=2, blank=True, choices=[(k, v[0]) for k, v in COLORES_GOOGLE.items()])
+    # Separadas por coma; sirven para reconocer al cliente en títulos de eventos cargados directo en Google.
+    palabras_clave = models.CharField(max_length=200, blank=True)
 
     class Meta:
         ordering = ['nombre']

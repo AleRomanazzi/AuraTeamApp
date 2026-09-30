@@ -88,6 +88,28 @@ export const PLATAFORMAS = [
   { value: 'otra', label: 'Otra' },
 ]
 
+// Colores de evento de Google Calendar (fijos en la API).
+export const COLORES_GOOGLE = [
+  { value: '1', label: 'Lavanda', hex: '#a4bdfc' },
+  { value: '2', label: 'Salvia', hex: '#7ae7bf' },
+  { value: '3', label: 'Uva', hex: '#dbadff' },
+  { value: '4', label: 'Flamenco', hex: '#ff887c' },
+  { value: '5', label: 'Banana', hex: '#fbd75b' },
+  { value: '6', label: 'Mandarina', hex: '#ffb878' },
+  { value: '7', label: 'Pavo real', hex: '#46d6db' },
+  { value: '8', label: 'Grafito', hex: '#e1e1e1' },
+  { value: '9', label: 'Arándano', hex: '#5484ed' },
+  { value: '10', label: 'Albahaca', hex: '#51b749' },
+  { value: '11', label: 'Tomate', hex: '#dc2127' },
+]
+
+export const ETIQUETAS = [
+  { value: 'operaciones', label: 'Operaciones' },
+  { value: 'coberturas', label: 'Coberturas' },
+  { value: 'reuniones', label: 'Reuniones & Briefing' },
+  { value: 'ceos', label: 'AuraTeam CEOs', soloAdmin: true },
+]
+
 export const COLORES = ['#3b82f6', '#818cf8', '#34d399', '#fbbf24', '#f87171', '#22d3ee', '#f472b6', '#94a3b8']
 
 export const labelDe = (lista, value) => lista.find((x) => x.value === value)?.label ?? value ?? '—'

@@ -2,11 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
-import { insertPrimaryCalendarEvent } from '../../features/google/calendarApi'
-import { isSignedIn } from '../../features/google/gapiClient'
-import { useClientes } from '../../hooks/useData'
+import { useClientes, useEsAdmin } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { COLORES } from '../../lib/constants'
+import { COLORES, ETIQUETAS } from '../../lib/constants'
 import { toDatetimeLocal } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { confirmar } from '../../store/confirmStore'
@@ -21,30 +19,26 @@ const invalidarAgenda = (qc) => {
 export default function EventoForm({ inicial, dia, cliente, onClose }) {
   const qc = useQueryClient()
   const { data: clientes = [] } = useClientes()
-  const google = isSignedIn()
+  const esAdmin = useEsAdmin()
   const [f, setF] = useState(() => ({
     titulo: inicial?.titulo ?? '',
+    etiqueta: inicial?.etiqueta ?? 'operaciones',
     inicio: inicial?.inicio ? toDatetimeLocal(inicial.inicio) : `${dia}T10:00`,
     fin: inicial?.fin ? toDatetimeLocal(inicial.fin) : '',
     cliente: inicial?.cliente ?? cliente?.id ?? '',
     color: inicial?.color ?? cliente?.color ?? COLORES[1],
     descripcion: inicial?.descripcion ?? '',
   }))
-  const [copiarGoogle, setCopiarGoogle] = useState(false)
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
   const soloLectura = Boolean(inicial?.id) && !inicial.puede_editar
 
   const guardar = useMutation({
-    mutationFn: async () => {
+    mutationFn: () => {
       const body = {
         ...f,
         inicio: new Date(f.inicio).toISOString(),
         fin: f.fin ? new Date(f.fin).toISOString() : null,
         cliente: f.cliente || null,
-      }
-      if (copiarGoogle && !inicial?.google_event_id) {
-        const g = await insertPrimaryCalendarEvent({ titulo: f.titulo, descripcion: f.descripcion, inicio: f.inicio, fin: f.fin })
-        body.google_event_id = g?.id || ''
       }
       return inicial?.id ? api.put(`cal-eventos/${inicial.id}/`, body) : api.post('cal-eventos/', body)
     },
@@ -53,7 +47,7 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
       notify(inicial?.id ? 'Evento actualizado' : 'Evento creado')
       onClose()
     },
-    onError: (e) => notifyError(e, e?.result?.error?.message || 'No se pudo guardar el evento'),
+    onError: (e) => notifyError(e, 'No se pudo guardar el evento'),
   })
 
   const borrar = useMutation({
@@ -88,7 +82,7 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
                 className="btn btn-danger btn-sm modal-footer-start"
                 disabled={borrar.isPending}
                 onClick={async () =>
-                  (await confirmar({ mensaje: `¿Eliminar «${inicial.titulo}»?${inicial.google_event_id ? ' (La copia en Google Calendar no se borra.)' : ''}`, peligro: true, confirmar: 'Eliminar' })) &&
+                  (await confirmar({ mensaje: `¿Eliminar «${inicial.titulo}»?${inicial.google_event_id ? ' También se borra de Google Calendar.' : ''}`, peligro: true, confirmar: 'Eliminar' })) &&
                   borrar.mutate()
                 }
               >
@@ -117,16 +111,27 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
             <input type="datetime-local" value={f.fin} onChange={set('fin')} min={f.inicio} />
           </Field>
         </div>
-        <Field label="Cliente">
-          <select value={f.cliente ?? ''} onChange={elegirCliente}>
-            <option value="">— Sin cliente —</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <div className="grid-2 tight">
+          <Field label="Etiqueta" hint="Calendario de Google donde se guarda.">
+            <select value={f.etiqueta} onChange={set('etiqueta')}>
+              {ETIQUETAS.filter((e) => esAdmin || !e.soloAdmin || e.value === f.etiqueta).map((e) => (
+                <option key={e.value} value={e.value}>
+                  {e.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Cliente" hint="En Google, el evento toma su color.">
+            <select value={f.cliente ?? ''} onChange={elegirCliente}>
+              <option value="">— Sin cliente —</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
         <Field label="Descripción">
           <textarea rows={3} value={f.descripcion} onChange={set('descripcion')} />
         </Field>
@@ -137,11 +142,6 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
             ))}
           </div>
         </Field>
-        {google && !inicial?.google_event_id ? (
-          <label className="check-row">
-            <input type="checkbox" checked={copiarGoogle} onChange={(e) => setCopiarGoogle(e.target.checked)} /> Crear también en Google Calendar
-          </label>
-        ) : null}
       </fieldset>
     </Modal>
   )

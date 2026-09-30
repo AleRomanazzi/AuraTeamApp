@@ -60,6 +60,9 @@ class Tarea(models.Model):
     notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
     # Huella de los campos sincronizados la última vez que panel y Notion coincidieron: evita reaplicar ecos propios.
     notion_huella = models.CharField(max_length=64, blank=True)
+    # Evento de día completo en la etiqueta Operaciones de Google Calendar.
+    google_event_id = models.CharField(max_length=255, blank=True)
+    google_huella = models.CharField(max_length=64, blank=True)
 
     class Meta:
         ordering = ['estado', 'fecha_limite', 'titulo']

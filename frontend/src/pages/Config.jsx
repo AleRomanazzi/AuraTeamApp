@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import CalendariosGoogle from '../components/config/CalendariosGoogle'
 import NotionConfig from '../components/config/NotionConfig'
 import Field from '../components/ui/Field'
 import Modal from '../components/ui/Modal'
@@ -614,6 +615,7 @@ export default function Config() {
       </div>
       {actual === 'perfil' ? <Perfil key={me.id} me={me} /> : null}
       {actual === 'google' ? <Google key={me.id} me={me} /> : null}
+      {actual === 'google' && me.es_admin ? <CalendariosGoogle /> : null}
       {actual === 'notion' ? <NotionConfig /> : null}
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
       {actual === 'categorias' ? <Categorias /> : null}

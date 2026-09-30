@@ -94,6 +94,14 @@ class ClienteViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def perform_update(self, serializer):
+        from apps.calendario import google_calendar
+
+        antes = serializer.instance.google_color
+        cliente = serializer.save()
+        if cliente.google_color != antes:
+            google_calendar.al_cambiar_color(cliente)
+
     def destroy(self, request, *args, **kwargs):
         cliente = self.get_object()
         try:

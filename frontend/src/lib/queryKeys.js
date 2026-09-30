@@ -26,6 +26,7 @@ export const QK = {
   usuarios: ['usuarios'],
   googleCal: (year, month) => ['google-calendar', year, month],
   googleEstado: ['google-estado'],
+  googleCalendarios: ['cal-google', 'estado'],
   notionEstado: ['notion', 'estado'],
   notionUsuarios: ['notion', 'usuarios'],
 }

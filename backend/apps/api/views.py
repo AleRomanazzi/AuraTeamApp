@@ -177,6 +177,7 @@ class MiPanelView(APIView):
 
     def get(self, request):
         from apps.calendario.serializers import EventoUnicoSerializer
+        from apps.calendario.views import eventos_visibles
         from apps.equipo.serializers import LiquidacionSerializer, TareaSerializer
 
         persona = request.user.persona
@@ -192,7 +193,7 @@ class MiPanelView(APIView):
                 .distinct()
             )
             liqs = Liquidacion.objects.filter(persona=persona).exclude(estado='anulada').prefetch_related('items').select_related('persona', 'cliente')[:12]
-        eventos = EventoUnico.objects.filter(inicio__date__gte=hoy, inicio__date__lte=hoy + timedelta(days=14)).select_related('cliente')
+        eventos = eventos_visibles(request.user).filter(inicio__date__gte=hoy, inicio__date__lte=hoy + timedelta(days=14))
         return Response(
             {
                 'persona': {'id': persona.id, 'nombre': persona.nombre} if persona else None,

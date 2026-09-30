@@ -161,35 +161,3 @@ export async function listPrimaryMonthEvents(ym) {
 
   return flat.map(({ e, calId, calSummary }) => mapGoogleEventToUi(e, calId, calSummary))
 }
-
-/**
- * Crea un evento en el calendario primario de la cuenta OAuth actual (p. ej. aurateamcontacto@gmail.com).
- * `inicio` / `fin` deben ser valores parseables por Date (p. ej. datetime-local del formulario).
- */
-export async function insertPrimaryCalendarEvent({ titulo, descripcion, inicio, fin }) {
-  if (!window.gapi?.client?.calendar?.events?.insert) {
-    throw new Error('Cliente Calendar no listo')
-  }
-  const startDate = new Date(inicio)
-  if (Number.isNaN(startDate.getTime())) {
-    throw new Error('Fecha de inicio inválida')
-  }
-  let endDate = fin ? new Date(fin) : null
-  if (!endDate || Number.isNaN(endDate.getTime())) {
-    endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
-  }
-  if (endDate.getTime() <= startDate.getTime()) {
-    endDate = new Date(startDate.getTime() + 60 * 60 * 1000)
-  }
-  const resource = {
-    summary: titulo || 'Evento',
-    description: descripcion || '',
-    start: { dateTime: startDate.toISOString() },
-    end: { dateTime: endDate.toISOString() },
-  }
-  const r = await window.gapi.client.calendar.events.insert({
-    calendarId: 'primary',
-    resource,
-  })
-  return r?.result ?? r
-}

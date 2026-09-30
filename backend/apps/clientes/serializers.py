@@ -53,6 +53,7 @@ class ClienteSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'nombre', 'razon_social', 'cuit', 'rubro', 'contacto', 'email', 'whatsapp', 'estado',
             'fecha_alta', 'color', 'notas', 'creado', 'deuda', 'deuda_vencida', 'fee_mensual', 'asignados',
+            'google_color', 'palabras_clave',
         )
         read_only_fields = ('id', 'creado')
 

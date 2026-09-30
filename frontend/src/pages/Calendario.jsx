@@ -8,6 +8,7 @@ import Tag from '../components/ui/Tag'
 import { listPrimaryMonthEvents } from '../features/google/calendarApi'
 import { isSignedIn } from '../features/google/gapiClient'
 import { useGoogleStore } from '../features/google/googleStore'
+import { useSyncCalendario } from '../features/google/useSyncCalendario'
 import { useEsAdmin } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { celdasMes, currentMonth, diaDe, fmtCorto, formatFecha, horaDe, todayISO } from '../lib/format'
@@ -43,11 +44,13 @@ export default function Calendario() {
     enabled: google,
     staleTime: 5 * 60_000,
   })
+  useSyncCalendario()
 
   const borrar = useMutation({
     mutationFn: (id) => api.delete(`cal-eventos/${id}/`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['cal-eventos'] })
+      qc.invalidateQueries({ queryKey: ['google-calendar'] })
       notify('Evento eliminado')
     },
     onError: (e) => notifyError(e),
@@ -183,7 +186,7 @@ export default function Calendario() {
                         className="btn btn-danger btn-xs"
                         aria-label="Eliminar evento"
                         onClick={async () =>
-                          (await confirmar({ mensaje: `¿Eliminar «${it.titulo}»?${it.evento.google_event_id ? ' (La copia en Google Calendar no se borra.)' : ''}`, peligro: true, confirmar: 'Eliminar' })) &&
+                          (await confirmar({ mensaje: `¿Eliminar «${it.titulo}»?${it.evento.google_event_id ? ' También se borra de Google Calendar.' : ''}`, peligro: true, confirmar: 'Eliminar' })) &&
                           borrar.mutate(it.id)
                         }
                       >

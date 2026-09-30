@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.core.permissions import es_admin
 
-from .models import EventoUnico
+from .models import ETIQUETAS_PRIVADAS, EventoUnico
 
 
 class EventoUnicoSerializer(serializers.ModelSerializer):
@@ -13,10 +13,10 @@ class EventoUnicoSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventoUnico
         fields = (
-            'id', 'titulo', 'inicio', 'fin', 'descripcion', 'color', 'cliente', 'cliente_nombre', 'google_event_id',
-            'puede_editar',
+            'id', 'titulo', 'inicio', 'fin', 'descripcion', 'color', 'cliente', 'cliente_nombre', 'etiqueta',
+            'google_event_id', 'puede_editar',
         )
-        read_only_fields = ('id',)
+        read_only_fields = ('id', 'google_event_id')
 
     def get_puede_editar(self, obj):
         request = self.context.get('request')
@@ -28,6 +28,12 @@ class EventoUnicoSerializer(serializers.ModelSerializer):
         value = value.strip()
         if not value:
             raise serializers.ValidationError('El título es obligatorio.')
+        return value
+
+    def validate_etiqueta(self, value):
+        request = self.context.get('request')
+        if value in ETIQUETAS_PRIVADAS and not (request and es_admin(request.user)):
+            raise serializers.ValidationError('Esa etiqueta es solo para los socios.')
         return value
 
     def validate(self, attrs):

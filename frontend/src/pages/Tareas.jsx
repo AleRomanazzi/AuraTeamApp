@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import EventoForm from '../components/calendario/EventoForm'
 import CalendarioCliente from '../components/tareas/CalendarioCliente'
 import ClienteBloque from '../components/tareas/ClienteBloque'
@@ -21,6 +22,7 @@ const FILTROS = [
   { value: 'vencidas', label: 'Vencidas' },
   { value: 'semana', label: 'Esta semana' },
 ]
+const SALIDA_MS = 1700
 const SIN_CLIENTE = { id: null, nombre: 'Sin cliente', color: '' }
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
 
@@ -74,6 +76,55 @@ export default function Tareas() {
     },
     onError: (e) => notifyError(e),
   })
+
+  // Las recién tildadas se ven hechas y se pliegan antes de salir de la lista.
+  const [tildadas, setTildadas] = useState(() => new Set())
+  const destildar = (id) =>
+    setTildadas((s) => {
+      const n = new Set(s)
+      n.delete(id)
+      return n
+    })
+  const deshacer = async (t) => {
+    destildar(t.id)
+    try {
+      await api.patch(`tareas/${t.id}/`, { estado: t.estado })
+      invalidar(qc, TAREAS)
+    } catch (e) {
+      notifyError(e)
+    }
+  }
+  const marcarHecha = async (t) => {
+    setTildadas((s) => new Set(s).add(t.id))
+    try {
+      await api.patch(`tareas/${t.id}/`, { estado: 'hecha' })
+    } catch (e) {
+      destildar(t.id)
+      notifyError(e)
+      return
+    }
+    toast.success(
+      (aviso) => (
+        <span className="toast-accion">
+          Hecha: {t.titulo}
+          <button
+            type="button"
+            onClick={() => {
+              toast.dismiss(aviso.id)
+              deshacer(t)
+            }}
+          >
+            Deshacer
+          </button>
+        </span>
+      ),
+      { duration: 6000 },
+    )
+    setTimeout(() => {
+      invalidar(qc, TAREAS)
+      destildar(t.id)
+    }, SALIDA_MS)
+  }
 
   const personasPorId = useMemo(() => Object.fromEntries(personas.map((p) => [p.id, p])), [personas])
 
@@ -183,7 +234,8 @@ export default function Tareas() {
                     onAbrirTarea={(t) => setTareaAbierta({ tarea: t })}
                     onNuevaTarea={(c) => setTareaAbierta({ cliente: c.id ? c : null })}
                     onAbrirDia={(c, dia) => setCalendario({ cliente: c, dia })}
-                    onMarcarHecha={(t) => cambiarEstado.mutate({ id: t.id, estado: 'hecha' })}
+                    tildadas={tildadas}
+                    onMarcarHecha={marcarHecha}
                   />
                 ))}
               </div>

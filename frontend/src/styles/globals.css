@@ -262,6 +262,17 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .tc-check:hover:not(:disabled) { border-color: var(--success); background: rgba(52, 211, 153, 0.12); }
 .tc-check:hover:not(:disabled)::after { content: '✓'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--success); font-size: 12px; }
 .tc-check:disabled { opacity: 0.35; cursor: not-allowed; }
+.tc-tarea--hecha { overflow: hidden; animation: tcSalida 0.45s ease-in 1.1s forwards; }
+.tc-tarea--hecha .tc-check { opacity: 1; cursor: default; border-color: var(--success); background: var(--success); animation: tcTilde 0.25s ease-out; }
+.tc-tarea--hecha .tc-check::after { content: '✓'; position: absolute; inset: 0; display: grid; place-items: center; color: #060b14; font-size: 13px; font-weight: 700; }
+.tc-tarea--hecha .tc-tarea-titulo { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--success); }
+.tc-tarea--hecha .tc-tarea-meta, .tc-tarea--hecha .tc-caras { opacity: 0.5; }
+@keyframes tcTilde { 0% { transform: scale(0.7); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes tcSalida { from { max-height: 80px; opacity: 1; } to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; margin-bottom: 0; border-width: 0; } }
+@media (prefers-reduced-motion: reduce) { .tc-tarea--hecha, .tc-tarea--hecha .tc-check { animation-duration: 0.01s; } }
+.toast-accion { display: inline-flex; align-items: center; gap: 12px; }
+.toast-accion button { background: none; border: none; padding: 0; color: var(--gold); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.toast-accion button:hover { text-decoration: underline; }
 .tc-tarea-main { flex: 1; min-width: 0; background: none; border: none; padding: 0; text-align: left; color: inherit; font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
 .tc-tarea-titulo { font-size: 14px; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-tarea-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }

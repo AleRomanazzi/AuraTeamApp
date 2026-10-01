@@ -25,7 +25,7 @@ function fechaTarea(t, hoy) {
 }
 
 /** Bloque de un cliente (o «Sin cliente» si `cliente.id` es null): agenda + tareas abiertas. */
-export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, proximas, hoy, personas, onAbrirTarea, onNuevaTarea, onAbrirDia, onMarcarHecha }) {
+export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, proximas, hoy, personas, tildadas, onAbrirTarea, onNuevaTarea, onAbrirDia, onMarcarHecha }) {
   const [expandido, setExpandido] = useState(false)
   const vencidas = tareas.filter((t) => t.vencida).length
   const lista = expandido ? tareas : tareas.slice(0, VISIBLES)
@@ -53,14 +53,17 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
           {lista.map((t) => {
             const est = estadoDe(t.estado)
             const asignados = t.asignados.map((id) => personas[id]).filter(Boolean)
+            const tildada = tildadas?.has(t.id)
             return (
-              <div key={t.id} className={`tc-tarea${t.vencida ? ' tc-tarea--late' : ''}`}>
+              <div key={t.id} className={`tc-tarea${t.vencida && !tildada ? ' tc-tarea--late' : ''}${tildada ? ' tc-tarea--hecha' : ''}`}>
                 <button
                   type="button"
                   className="tc-check"
+                  role="checkbox"
+                  aria-checked={tildada}
                   aria-label={`Marcar «${t.titulo}» como hecha`}
                   title={t.puede_editar ? 'Marcar como hecha' : 'Solo podés completar tus tareas'}
-                  disabled={!t.puede_editar}
+                  disabled={!t.puede_editar || tildada}
                   onClick={() => onMarcarHecha(t)}
                 />
                 <button type="button" className="tc-tarea-main" onClick={() => onAbrirTarea(t)}>

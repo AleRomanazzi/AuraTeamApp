@@ -7,7 +7,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from apps.core.csv_utils import csv_response, monto_es
-from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de
+from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, tiene_permiso
 from apps.core.utils import money, parse_mes, today
 from apps.calendario import google_calendar
 from apps.integraciones import notion
@@ -20,6 +20,7 @@ from .serializers import (
     PagarLiquidacionSerializer,
     PersonaBasicaSerializer,
     PersonaSerializer,
+    PlanDelMesSerializer,
     RepartirSerializer,
     TareaRecurrenteSerializer,
     TareaSerializer,
@@ -72,7 +73,7 @@ class TareaPermission(permissions.BasePermission):
             return False
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
             return True
-        return view.action in ('create', 'update', 'partial_update')
+        return view.action in ('create', 'update', 'partial_update', 'plan')
 
     def has_object_permission(self, request, view, obj):
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
@@ -122,6 +123,20 @@ class TareaViewSet(viewsets.ModelViewSet):
         tarea = serializer.save()
         notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
+
+    @action(detail=False, methods=['post'])
+    def plan(self, request):
+        """Crea varias tareas de un cliente de una vez. Llegan a Notion y a Google de a tandas, con las sincronizaciones."""
+        serializer = PlanDelMesSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user, cliente = request.user, serializer.validated_data['cliente']
+        if not es_admin(user):
+            persona = persona_de(user)
+            asignado = persona is not None and AsignacionCliente.objects.filter(persona=persona, cliente=cliente, activo=True).exists()
+            if not (tiene_permiso(user, 'plan_tareas') and asignado):
+                raise PermissionDenied('Solo podés armar el plan de tus clientes asignados.')
+        creadas = serializer.save()
+        return Response({'creadas': len(creadas)}, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):
         page_id, gid, cal_id = instance.notion_page_id, instance.google_event_id, instance.google_calendar_id

@@ -2,6 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { invalidar } from '../../lib/queryKeys'
 
+/** Mientras queden envíos (o el servidor la haya salteado por el límite de una por minuto), se vuelve a pedir. */
+export const seguirSincronizando = (query) => {
+  const d = query.state.data
+  return d?.pendientes || (d?.omitida && !d.detail) ? 65_000 : false
+}
+
 /** Trae lo cargado directo en Google Calendar al abrir la pantalla (el servidor lo limita a una vez por minuto). */
 export function useSyncCalendario() {
   const qc = useQueryClient()
@@ -13,8 +19,7 @@ export function useSyncCalendario() {
       return data
     },
     staleTime: 60_000,
-    // El servidor sube las tareas de a tandas: mientras queden, se vuelve a pedir pasado el límite de una por minuto.
-    refetchInterval: (query) => (query.state.data?.pendientes ? 65_000 : false),
+    refetchInterval: seguirSincronizando,
     retry: false,
   })
 }

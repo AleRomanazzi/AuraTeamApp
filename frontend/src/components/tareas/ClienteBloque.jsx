@@ -25,7 +25,7 @@ function fechaTarea(t, hoy) {
 }
 
 /** Bloque de un cliente (o «Sin cliente» si `cliente.id` es null): agenda + tareas abiertas. */
-export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, proximas, hoy, personas, tildadas, onAbrirTarea, onNuevaTarea, onAbrirDia, onMarcarHecha }) {
+export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, proximas, hoy, personas, tildadas, onAbrirTarea, onNuevaTarea, onAbrirDia, onMarcarHecha, onPlan }) {
   const [expandido, setExpandido] = useState(false)
   const vencidas = tareas.filter((t) => t.vencida).length
   const lista = expandido ? tareas : tareas.slice(0, VISIBLES)
@@ -42,9 +42,16 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
             {vencidas ? <span className="down"> · {vencidas} vencida{vencidas === 1 ? '' : 's'}</span> : null}
           </div>
         </div>
-        <button type="button" className="btn btn-secondary btn-xs" onClick={() => onAbrirDia(cliente, hoy)}>
-          Calendario
-        </button>
+        <div className="tc-head-acciones">
+          {onPlan ? (
+            <button type="button" className="btn btn-secondary btn-xs" onClick={() => onPlan(cliente)}>
+              Plan del mes
+            </button>
+          ) : null}
+          <button type="button" className="btn btn-secondary btn-xs" onClick={() => onAbrirDia(cliente, hoy)}>
+            Calendario
+          </button>
+        </div>
       </header>
 
       <div className="tc-cuerpo">

@@ -306,6 +306,38 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .recurrente--pausada { opacity: 0.55; }
 .recurrente-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: none; padding: 0; color: var(--text); font: inherit; cursor: pointer; }
 .recurrente-main:hover strong { color: var(--text-strong); }
+.tc-head-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.plan-mes-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 16px; font-size: 16px; }
+.plan-mes-nav strong { min-width: 150px; text-align: center; color: var(--text-strong); font-weight: 500; }
+.plan-seccion { margin-bottom: 18px; }
+.plan-cargadas { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+.plan-cargadas li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.plan-cargadas li:last-child { border-bottom: none; }
+.plan-fecha { color: var(--text-muted); text-transform: capitalize; }
+.plan-titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.plan-hecha .plan-titulo { text-decoration: line-through; color: var(--text-muted); }
+.plan-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.plan-rapida { border: 1px solid var(--border-strong); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; background: var(--surface2); }
+.plan-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; max-width: 360px; }
+.plan-cal-dia { min-height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.plan-cal-dia:hover { border-color: var(--border-strong); color: var(--text); }
+.plan-cal-dia.active { background: var(--accent-bg); border-color: var(--accent); color: var(--text-strong); }
+.plan-rapida-pie { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.plan-rapida-pie .check-row { margin-right: auto; }
+.plan-borrador-head { display: flex; justify-content: space-between; align-items: center; }
+.plan-borrador { display: flex; flex-direction: column; gap: 6px; }
+.plan-fila { display: grid; grid-template-columns: auto 150px minmax(0, 1fr) 120px 64px auto; gap: 8px; align-items: center; }
+.plan-fila input[type='date'], .plan-fila-titulo input { min-height: 34px; padding: 5px 10px; font-size: 13px; }
+.plan-fila-titulo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.plan-fila--fuera { opacity: 0.45; }
+.plan-quitar { font-size: 22px; min-width: 32px; min-height: 32px; margin: 0; }
+@media (max-width: 720px) {
+  .plan-fila { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .plan-fila-titulo { grid-column: 2 / -1; }
+  .plan-fila .select-sm, .plan-fila .tc-caras { grid-column: 2; }
+  .plan-cargadas li { grid-template-columns: 60px minmax(0, 1fr); }
+  .plan-cargadas li .small { display: none; }
+}
 .tarea-sheet-titulo { width: 100%; background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 4px 0 10px; font-size: 20px; font-weight: 500; color: var(--text-strong); }
 .tarea-sheet-titulo:focus { outline: none; border-bottom-color: var(--accent); box-shadow: none; }
 .tarea-sheet-label { font-size: 10px; font-weight: 500; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-dim); margin: 16px 0 8px; }

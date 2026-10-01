@@ -380,14 +380,15 @@ def vincular_clientes() -> dict:
     }
 
 
-def _recurrentes_sin_pagina():
-    return Tarea.objects.filter(notion_page_id__isnull=True, recurrente__isnull=False)
+def _sin_pagina():
+    limite = timezone.now() - timedelta(days=DIAS_HECHAS_A_ENVIAR)
+    return Tarea.objects.filter(notion_page_id__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
 
 
-def enviar_recurrentes() -> int:
-    """Sube (de a LIMITE_ENVIO, las más próximas primero) las tareas recurrentes que todavía no tienen página."""
+def enviar_pendientes() -> int:
+    """Sube de a LIMITE_ENVIO las tareas que todavía no tienen página (recurrentes, planes del mes, envíos fallidos)."""
     n = 0
-    for pk in _recurrentes_sin_pagina().values_list('pk', flat=True)[:LIMITE_ENVIO]:
+    for pk in _sin_pagina().values_list('pk', flat=True)[:LIMITE_ENVIO]:
         # El bloqueo evita que dos sincronizaciones simultáneas creen dos páginas para la misma tarea.
         with transaction.atomic():
             tarea = Tarea.objects.select_for_update(skip_locked=True).filter(pk=pk, notion_page_id__isnull=True).first()
@@ -468,14 +469,12 @@ def sincronizar(completa=False) -> dict:
                     resumen['borradas'] += 1
                 else:
                     Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=None, notion_huella='')
-            limite = timezone.now() - timedelta(days=DIAS_HECHAS_A_ENVIAR)
-            pendientes = Tarea.objects.filter(notion_page_id__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
-            for tarea in pendientes.select_related('cliente'):
+            for tarea in _sin_pagina().select_related('cliente'):
                 enviar_tarea(tarea)
                 resumen['enviadas'] += 1
         else:
-            resumen['enviadas'] = enviar_recurrentes()
-            resumen['pendientes'] = _recurrentes_sin_pagina().count()
+            resumen['enviadas'] = enviar_pendientes()
+            resumen['pendientes'] = _sin_pagina().count()
     except NotionError as e:
         registrar_error(str(e))
         raise

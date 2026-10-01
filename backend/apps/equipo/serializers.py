@@ -14,6 +14,7 @@ from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Liquidacion
 
 MAX_LINKS_TAREA = 20
 MAX_POR_DIA = 10
+MAX_TAREAS_PLAN = 100
 
 
 def es_tarea_propia(user, tarea) -> bool:
@@ -127,6 +128,35 @@ class TareaSerializer(serializers.ModelSerializer):
         if hasattr(instance, '_prefetched_objects_cache'):
             instance._prefetched_objects_cache.clear()
         return instance
+
+
+class TareaDelPlanSerializer(serializers.ModelSerializer):
+    asignados = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Persona.objects.all())
+
+    class Meta:
+        model = Tarea
+        fields = ('titulo', 'descripcion', 'fecha_limite', 'etiqueta', 'prioridad', 'asignados')
+        extra_kwargs = {'fecha_limite': {'required': True, 'allow_null': False}}
+
+    validate_titulo = TareaSerializer.validate_titulo
+
+
+class PlanDelMesSerializer(serializers.Serializer):
+    """Varias tareas de un cliente creadas de una vez (Plan del mes)."""
+
+    cliente = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all())
+    tareas = TareaDelPlanSerializer(many=True, allow_empty=False, max_length=MAX_TAREAS_PLAN)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        cliente, user = validated_data['cliente'], self.context['request'].user
+        creadas = []
+        for datos in validated_data['tareas']:
+            personas = datos.pop('asignados', [])
+            tarea = Tarea.objects.create(cliente=cliente, user=user, **datos)
+            AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=p, tarea=tarea) for p in personas])
+            creadas.append(tarea)
+        return creadas
 
 
 class TareaRecurrenteSerializer(serializers.ModelSerializer):

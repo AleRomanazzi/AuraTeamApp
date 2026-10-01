@@ -36,6 +36,9 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
     `TareaRecurrente`: plantillas (p. ej. historias diarias) que `services.generar_recurrentes` convierte en tareas
     hasta fin del mes en curso (desde su última semana, también el siguiente) al listar tareas o abrir Mi panel;
     Notion y Google las reciben de a tandas en las sincronizaciones incrementales.
+ «Plan del mes» (`POST /api/tareas/plan/`, admins y CM en sus clientes asignados): crea varias tareas de un cliente
+ de una vez; la copia del mes anterior (mismo día de la semana) se arma en el frontend (`PlanMesModal.jsx`).
+ La sincronización incremental de Notion sube de a tandas cualquier tarea sin página, no solo las recurrentes.
   - `finanzas`: transacciones (ingresos/egresos) y categorías. `servicios`: suscripciones. `stats`: reportes.
   - `integraciones`: sincronización de Tareas con Notion en los dos sentidos (`notion.py`). Panel → Notion al guardar
     desde la API; Notion → panel por webhook (`/api/notion/webhook/`), incremental al abrir Tareas y completa manual.

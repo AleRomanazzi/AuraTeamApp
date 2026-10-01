@@ -266,7 +266,7 @@ def test_rol_cm_ve_fichas_de_clientes_y_estadisticas(cm_client, equipo_client, c
     assert cm_client.patch(f'/api/clientes/{cliente.id}/', {'nombre': 'X'}, format='json').status_code == 403
     assert equipo_client.get('/api/stats/').status_code == 403
     assert equipo_client.get(f'/api/clientes/{cliente.id}/evolucion/').status_code == 403
-    assert cm_client.get('/api/auth/me/').data['permisos'] == ['clientes', 'estadisticas']
+    assert cm_client.get('/api/auth/me/').data['permisos'] == ['clientes', 'estadisticas', 'plan_tareas']
     assert equipo_client.get('/api/auth/me/').data['permisos'] == []
 
 

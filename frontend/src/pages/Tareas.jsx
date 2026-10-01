@@ -4,13 +4,14 @@ import toast from 'react-hot-toast'
 import EventoForm from '../components/calendario/EventoForm'
 import CalendarioCliente from '../components/tareas/CalendarioCliente'
 import ClienteBloque from '../components/tareas/ClienteBloque'
+import PlanMesModal from '../components/tareas/PlanMesModal'
 import RecurrentesModal from '../components/tareas/RecurrentesModal'
 import TableroTareas from '../components/tareas/TableroTareas'
 import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
-import { useSyncCalendario } from '../features/google/useSyncCalendario'
-import { useClientes, useMe, usePersonas } from '../hooks/useData'
+import { seguirSincronizando, useSyncCalendario } from '../features/google/useSyncCalendario'
+import { puede, useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { diaDe, lunesDe, sumarDias, todayISO } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
@@ -44,6 +45,7 @@ export default function Tareas() {
   const [calendario, setCalendario] = useState(null)
   const [evento, setEvento] = useState(null)
   const [recurrentes, setRecurrentes] = useState(false)
+  const [plan, setPlan] = useState(null)
 
   const hoy = todayISO()
   const lunes = lunesDe(hoy)
@@ -63,7 +65,7 @@ export default function Tareas() {
       return data
     },
     staleTime: 60_000,
-    refetchInterval: (query) => (query.state.data?.pendientes ? 65_000 : false),
+    refetchInterval: seguirSincronizando,
     retry: false,
   })
   useSyncCalendario()
@@ -165,6 +167,9 @@ export default function Tareas() {
       .filter((b) => !filtrando || b.tareas.length)
   }, [filtradas, esAdmin, clientes, mios.data, me, eventos.data, filtro, busqueda])
 
+  const misClientes = new Set((mios.data ?? []).map((c) => c.id))
+  const puedePlan = (c) => Boolean(c.id) && (esAdmin || (puede(me, 'plan_tareas') && misClientes.has(c.id)))
+
   const irA = (id) => document.getElementById(`bloque-${id ?? 'interno'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const tareasDeCalendario = calendario ? (q.data ?? []).filter((t) => t.estado !== 'hecha' && (t.cliente ?? null) === calendario.cliente.id) : []
 
@@ -236,6 +241,7 @@ export default function Tareas() {
                     onAbrirDia={(c, dia) => setCalendario({ cliente: c, dia })}
                     tildadas={tildadas}
                     onMarcarHecha={marcarHecha}
+                    onPlan={puedePlan(b.cliente) ? (c) => setPlan(c) : null}
                   />
                 ))}
               </div>
@@ -246,6 +252,8 @@ export default function Tareas() {
 
       {recurrentes ? (
         <RecurrentesModal onClose={() => setRecurrentes(false)} />
+      ) : plan ? (
+        <PlanMesModal cliente={plan} tareas={(q.data ?? []).filter((t) => t.cliente === plan.id)} onClose={() => setPlan(null)} />
       ) : evento ? (
         <EventoForm inicial={evento.inicial} dia={evento.dia} cliente={evento.cliente?.id ? evento.cliente : null} onClose={() => setEvento(null)} />
       ) : tareaAbierta ? (

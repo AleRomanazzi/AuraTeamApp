@@ -15,7 +15,7 @@ ROLES_EQUIPO = [
 # Secciones extra que habilita cada rol, además de lo común a todo el equipo
 # (mi panel, tareas, calendario, sus pagos y su cuenta).
 PERMISOS_POR_ROL = {
-    'cm': {'clientes', 'estadisticas'},
+    'cm': {'clientes', 'estadisticas', 'plan_tareas'},
 }
 
 

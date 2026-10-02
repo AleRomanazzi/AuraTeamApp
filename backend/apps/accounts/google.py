@@ -138,8 +138,11 @@ def access_token() -> dict:
     c = cuenta()
     if c is None:
         raise GoogleDesconectada('La cuenta de Google de la agencia no está conectada.')
+    # Si no se puede descifrar (otra clave, p. ej. desde una máquina local contra la base de producción) la cuenta no
+    # se borra: solo se borra cuando Google revocó el acceso.
+    refresh = _descifrar(c.refresh_token)
     try:
-        data = _post_token({'refresh_token': _descifrar(c.refresh_token), 'grant_type': 'refresh_token'})
+        data = _post_token({'refresh_token': refresh, 'grant_type': 'refresh_token'})
     except GoogleDesconectada:
         CuentaGoogle.objects.all().delete()
         cache.delete(CACHE_KEY)

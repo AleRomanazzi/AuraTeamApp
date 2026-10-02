@@ -85,6 +85,15 @@ def test_refresh_revocado_desconecta(api_client, google_falso):
 
 
 @pytest.mark.django_db
+def test_otra_clave_de_cifrado_no_borra_la_cuenta(api_client, google_falso, settings):
+    _conectar(api_client)
+    cache.clear()
+    settings.AURA_GOOGLE_TOKEN_KEY = 'otra-clave-local'
+    assert api_client.get('/api/auth/google/token/').status_code == 409
+    assert CuentaGoogle.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_state_invalido_y_permisos(api_client, equipo_client, google_falso):
     r = api_client.get('/api/auth/google/callback/', {'code': 'x', 'state': 'trucho'})
     assert r.status_code == 302 and 'google=error' in r['Location']

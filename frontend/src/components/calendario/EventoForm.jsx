@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
-import { useClientes, useEsAdmin } from '../../hooks/useData'
+import { opcionesEtiqueta, useClientes, useEtiquetas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { COLORES, ETIQUETAS } from '../../lib/constants'
+import { COLORES } from '../../lib/constants'
 import { toDatetimeLocal } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { confirmar } from '../../store/confirmStore'
@@ -19,7 +19,7 @@ const invalidarAgenda = (qc) => {
 export default function EventoForm({ inicial, dia, cliente, onClose }) {
   const qc = useQueryClient()
   const { data: clientes = [] } = useClientes()
-  const esAdmin = useEsAdmin()
+  const etiquetas = useEtiquetas()
   const [f, setF] = useState(() => ({
     titulo: inicial?.titulo ?? '',
     etiqueta: inicial?.etiqueta ?? 'historias',
@@ -114,7 +114,7 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
         <div className="grid-2 tight">
           <Field label="Etiqueta" hint="Calendario de Google donde se guarda.">
             <select value={f.etiqueta} onChange={set('etiqueta')}>
-              {ETIQUETAS.filter((e) => esAdmin || !e.soloAdmin || e.value === f.etiqueta).map((e) => (
+              {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                 <option key={e.value} value={e.value}>
                   {e.label}
                 </option>

@@ -250,3 +250,53 @@ def test_sin_token_no_llama_a_notion(api_client, monkeypatch):
     assert api_client.post('/api/tareas/', {'titulo': 'Local'}, format='json').status_code == 201
     assert api_client.post('/api/notion/sincronizar/').data['omitida'] is True
     assert Persona.objects.count() == 0
+
+
+PRIVADAS_DS = '845fb2f7-9b20-4c21-bd0a-a255025d5de9'
+
+
+@pytest.mark.django_db
+def test_las_tareas_privadas_van_a_su_base_y_se_mudan(api_client, equipo_client, falso):
+    r = api_client.post('/api/tareas/', {'titulo': 'Reunión de socios', 'etiqueta': 'ceos'}, format='json')
+    assert r.status_code == 201, r.data
+    tarea = Tarea.objects.get()
+    assert tarea.notion_privada and falso.paginas[tarea.notion_page_id]['parent']['data_source_id'] == PRIVADAS_DS
+    assert equipo_client.post('/api/tareas/', {'titulo': 'X', 'etiqueta': 'ceos'}, format='json').status_code == 400
+    assert not [t for t in _lista(equipo_client.get('/api/tareas/').data) if t['id'] == tarea.id]
+
+    vieja = tarea.notion_page_id
+    api_client.patch(f'/api/tareas/{tarea.id}/', {'etiqueta': 'reuniones'}, format='json')
+    tarea.refresh_from_db()
+    assert falso.paginas[vieja]['in_trash'] and not tarea.notion_privada
+    assert falso.paginas[tarea.notion_page_id]['parent']['data_source_id'] == TAREAS_DS
+
+
+@pytest.mark.django_db
+def test_lo_cargado_en_la_base_privada_llega_como_ceos(api_client, falso):
+    falso.agregar(PRIVADAS_DS, _props_tarea('Revisar números'))
+    r = api_client.post('/api/notion/sincronizar/', {'completa': True}, format='json')
+    assert r.status_code == 200, r.data
+    tarea = Tarea.objects.get(titulo='Revisar números')
+    assert tarea.etiqueta == 'ceos' and tarea.notion_privada
+
+
+@pytest.mark.django_db
+def test_sin_acceso_a_la_base_privada_lo_demas_sincroniza(api_client, falso, monkeypatch):
+    original = falso.__call__
+
+    def sin_privada(method, url, **kw):
+        if PRIVADAS_DS in url or (kw.get('json') or {}).get('parent', {}).get('data_source_id') == PRIVADAS_DS:
+            return httpx.Response(404, json={'message': 'no'})
+        return original(method, url, **kw)
+
+    monkeypatch.setattr(httpx, 'request', sin_privada)
+    falso.agregar(TAREAS_DS, _props_tarea('Grilla'))
+    Tarea.objects.create(titulo='Socios', etiqueta='ceos')
+    r = api_client.post('/api/notion/sincronizar/', {'completa': True}, format='json')
+    assert r.status_code == 200, r.data
+    assert r.data['privadas_sin_conectar'] and Tarea.objects.filter(titulo='Grilla').exists()
+    assert Tarea.objects.get(titulo='Socios').notion_page_id is None
+
+
+def _lista(data):
+    return data['results'] if isinstance(data, dict) else data

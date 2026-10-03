@@ -3,11 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Field from "../ui/Field";
 import Modal from "../ui/Modal";
 import QueryState from "../ui/QueryState";
-import { useClientes, usePersonas } from "../../hooks/useData";
+import { opcionesEtiqueta, useClientes, useEtiquetas, usePersonas } from "../../hooks/useData";
 import { api, getList } from "../../lib/api";
 import {
   DIAS_SEMANA,
-  ETIQUETAS_TAREA,
   PRIORIDADES,
   labelDe,
 } from "../../lib/constants";
@@ -37,6 +36,7 @@ export default function RecurrentesModal({ onClose }) {
   const qc = useQueryClient();
   const { data: clientes = [] } = useClientes();
   const { data: personas = [] } = usePersonas();
+  const etiquetas = useEtiquetas();
   const q = useQuery({
     queryKey: QK.recurrentes,
     queryFn: () => getList("tareas-recurrentes/"),
@@ -177,7 +177,7 @@ export default function RecurrentesModal({ onClose }) {
           </Field>
           <Field label="Calendario">
             <select value={f.etiqueta} onChange={set("etiqueta")}>
-              {ETIQUETAS_TAREA.map((e) => (
+              {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                 <option key={e.value} value={e.value}>
                   {e.label}
                 </option>
@@ -292,7 +292,7 @@ export default function RecurrentesModal({ onClose }) {
                   <strong>{p.titulo}</strong>
                   <span className="muted small">
                     {p.por_dia} por día · {diasTexto(p.dias)} ·{" "}
-                    {labelDe(ETIQUETAS_TAREA, p.etiqueta)}
+                    {labelDe(etiquetas, p.etiqueta)}
                     {p.personas.length
                       ? ` · ${p.personas.map((id) => personas.find((x) => x.id === id)?.nombre ?? "?").join(", ")}`
                       : ""}

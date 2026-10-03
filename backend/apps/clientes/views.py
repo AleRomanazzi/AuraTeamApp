@@ -132,6 +132,7 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], permission_classes=[IsAdmin])
     def reporte(self, request, pk=None):
+        from apps.calendario import etiquetas
         from apps.calendario.models import EventoUnico
         from apps.equipo.models import Tarea
         from apps.stats.models import AnalisisStats
@@ -153,6 +154,10 @@ class ClienteViewSet(viewsets.ModelViewSet):
             | Q(periodo_hasta__isnull=True, creado__date__gte=inicio, creado__date__lte=fin)
         ).prefetch_related('imagenes')
         eventos = EventoUnico.objects.filter(cliente=cliente, inicio__date__gte=inicio, inicio__date__lte=fin)
+        if not es_admin(request.user):
+            privadas = etiquetas.privadas()
+            hechas, pendientes = hechas.exclude(etiqueta__in=privadas), pendientes.exclude(etiqueta__in=privadas)
+            eventos = eventos.exclude(etiqueta__in=privadas)
         return Response(
             {
                 'periodo': periodo,

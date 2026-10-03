@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, tiene_permiso
 from apps.core.utils import money, parse_mes, today
-from apps.calendario import google_calendar
+from apps.calendario import etiquetas, google_calendar
 from apps.integraciones import notion
 
 from . import services
@@ -87,6 +87,8 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Tarea.objects.select_related('cliente').prefetch_related('asignaciones__persona')
+        if not es_admin(self.request.user):
+            qs = qs.exclude(etiqueta__in=etiquetas.privadas())
         p = self.request.query_params
         if p.get('estado') == 'abiertas':
             qs = qs.exclude(estado='hecha')
@@ -293,5 +295,5 @@ def tareas_proximas(persona=None, dias=7):
     hoy = today()
     qs = Tarea.objects.exclude(estado='hecha').filter(fecha_limite__isnull=False, fecha_limite__lte=hoy.fromordinal(hoy.toordinal() + dias))
     if persona is not None:
-        qs = qs.filter(asignaciones__persona=persona)
+        qs = qs.filter(asignaciones__persona=persona).exclude(etiqueta__in=etiquetas.privadas())
     return qs.select_related('cliente').distinct()

@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
-import { useClientes, useMe, usePersonas } from '../../hooks/useData'
+import { opcionesEtiqueta, useClientes, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { ESTADOS_TAREA, ETIQUETAS_TAREA, PRIORIDADES } from '../../lib/constants'
+import { ESTADOS_TAREA, PRIORIDADES } from '../../lib/constants'
 import { notify, notifyError } from '../../lib/notify'
 import { TAREAS, invalidar } from '../../lib/queryKeys'
 import { confirmar } from '../../store/confirmStore'
@@ -23,6 +23,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
   const { data: me } = useMe()
   const { data: clientes = [] } = useClientes()
   const { data: personas = [] } = usePersonas()
+  const etiquetas = useEtiquetas()
   const esAdmin = Boolean(me?.es_admin)
   const nueva = !tarea?.id
   const editable = nueva || tarea.puede_editar
@@ -152,7 +153,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
           </Field>
           <Field label="Calendario" hint="Con fecha, va como día completo a ese calendario de Google.">
             <select value={f.etiqueta} onChange={set('etiqueta')}>
-              {ETIQUETAS_TAREA.map((e) => (
+              {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                 <option key={e.value} value={e.value}>
                   {e.label}
                 </option>

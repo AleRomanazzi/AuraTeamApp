@@ -332,3 +332,40 @@ def test_equipo_ve_eventos_sin_cliente_y_de_sus_clientes(api_client, equipo_clie
     assert {e['titulo'] for e in equipo_client.get('/api/cal-eventos/').data} == {'Interno', 'De Cicles'}
     assert {e['titulo'] for e in equipo_client.get('/api/mi-panel/').data['eventos']} == {'Interno', 'De Cicles'}
     assert len(api_client.get('/api/cal-eventos/').data) == 3
+
+
+@pytest.mark.django_db
+def test_calendario_nuevo_es_etiqueta_y_se_puede_hacer_privado(api_client, equipo_client, gcal):
+    gcal.calendarios['mkt@group'] = {'summary': 'Marketing AuraTeam', 'eventos': {}, 'cambios': []}
+    google_calendar.sincronizar()
+    cal = CalendarioGoogle.objects.get(calendar_id='mkt@group')
+    assert cal.etiqueta == 'marketingaurateam' and not cal.privada and not cal.oculta
+    assert 'marketingaurateam' in [e['valor'] for e in equipo_client.get('/api/calendario/etiquetas/').data]
+    assert 'ceos' not in [e['valor'] for e in equipo_client.get('/api/calendario/etiquetas/').data]
+    assert 'ceos' in [e['valor'] for e in api_client.get('/api/calendario/etiquetas/').data]
+
+    r = equipo_client.post('/api/tareas/', {'titulo': 'Campaña', 'etiqueta': 'marketingaurateam', 'fecha_limite': '2026-10-06'}, format='json')
+    assert r.status_code == 201, r.data
+    tarea = Tarea.objects.get()
+    assert tarea.google_event_id in gcal.eventos('mkt@group')
+
+    r = api_client.post('/api/calendario/google/etiqueta/', {'etiqueta': 'marketingaurateam', 'privada': True}, format='json')
+    assert r.status_code == 204
+    data = equipo_client.get('/api/tareas/').data
+    assert not (data['results'] if isinstance(data, dict) else data)
+    assert 'marketingaurateam' not in [e['valor'] for e in equipo_client.get('/api/calendario/etiquetas/').data]
+    r = equipo_client.post('/api/cal-eventos/', {'titulo': 'X', 'inicio': '2026-10-05T10:00:00-03:00', 'etiqueta': 'marketingaurateam'}, format='json')
+    assert r.status_code == 400
+    assert api_client.post('/api/calendario/google/etiqueta/', {'etiqueta': 'ceos', 'privada': False}, format='json').status_code == 400
+
+
+@pytest.mark.django_db
+def test_etiqueta_inexistente_o_calendario_borrado(api_client, gcal):
+    gcal.calendarios['mkt@group'] = {'summary': 'Marketing', 'eventos': {}, 'cambios': []}
+    google_calendar.sincronizar()
+    assert api_client.post('/api/tareas/', {'titulo': 'X', 'etiqueta': 'inventada'}, format='json').status_code == 400
+
+    del gcal.calendarios['mkt@group']
+    _incremental()
+    assert CalendarioGoogle.objects.get(etiqueta='marketing').oculta
+    assert 'marketing' not in [e['valor'] for e in api_client.get('/api/calendario/etiquetas/').data]

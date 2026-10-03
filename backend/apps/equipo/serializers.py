@@ -6,6 +6,7 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.calendario import etiquetas
 from apps.clientes.models import Cliente
 from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
@@ -70,6 +71,10 @@ class TareaSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('El título es obligatorio.')
         return value
+
+    def validate_etiqueta(self, value):
+        request = self.context.get('request')
+        return etiquetas.validar(value, request and request.user, getattr(self.instance, 'etiqueta', None))
 
     def validate_links(self, value):
         if not isinstance(value, list):
@@ -139,6 +144,7 @@ class TareaDelPlanSerializer(serializers.ModelSerializer):
         extra_kwargs = {'fecha_limite': {'required': True, 'allow_null': False}}
 
     validate_titulo = TareaSerializer.validate_titulo
+    validate_etiqueta = TareaSerializer.validate_etiqueta
 
 
 class PlanDelMesSerializer(serializers.Serializer):
@@ -178,6 +184,8 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('El título es obligatorio.')
         return value
+
+    validate_etiqueta = TareaSerializer.validate_etiqueta
 
     def validate_dias(self, value):
         if not isinstance(value, list) or not value or any(not isinstance(d, int) or not 0 <= d <= 6 for d in value):

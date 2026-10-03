@@ -43,17 +43,23 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
   - `integraciones`: sincronización de Tareas con Notion en los dos sentidos (`notion.py`). Panel → Notion al guardar
     desde la API; Notion → panel por webhook (`/api/notion/webhook/`), incremental al abrir Tareas y completa manual.
     Nombres de propiedades/opciones de Notion como constantes al inicio de `notion.py`: si Claude los cambia en Notion,
-    hay que actualizarlos ahí. Un fallo de Notion nunca debe impedir guardar en el panel.
-  - `calendario`: eventos del panel y Google Calendar (`google_calendar.py`). Cada etiqueta (CEOs, Coberturas,
-    Historias, Posteos, Edición, Reuniones & Briefing) es un calendario de la cuenta de la agencia; el cliente se
-    distingue por el color del evento (`Cliente.google_color`). Las tareas con fecha van como día completo al
-    calendario de su etiqueta. CEOs es solo para admins. Un fallo de Google nunca debe impedir guardar en el panel.
+    hay que actualizarlos ahí. Un fallo de Notion nunca debe impedir guardar en el panel. Las tareas con etiqueta
+    privada van a otra base, «Tareas · CEOs» (`NOTION_TAREAS_PRIVADAS_DS`, mismas propiedades), compartida solo con
+    los socios; al cambiar de etiqueta la página se muda de base (`Tarea.notion_privada`).
+  - `calendario`: eventos del panel y Google Calendar (`google_calendar.py`). Cada etiqueta es un calendario de la
+    cuenta de la agencia (`CalendarioGoogle`): las 6 base (CEOs, Coberturas, Historias, Posteos, Edición, Reuniones &
+    Briefing) más los calendarios nuevos, que se detectan solos al sincronizar. Lista y reglas en `etiquetas.py`:
+    las privadas (CEOs siempre, y las que un admin marque «Solo socios») solo las ven y usan los admins en eventos,
+    tareas, Mi panel y reportes; las ocultas no se ofrecen ni se sincronizan. El cliente se distingue por el color del
+    evento (`Cliente.google_color`). Las tareas con fecha van como día completo al calendario de su etiqueta (cualquiera).
+    Un fallo de Google nunca debe impedir guardar en el panel.
   - `core` (permisos `IsAdmin`, comandos), `api` (config, export/import).
 - **Frontend** (`frontend/`): React 19 + Vite + react-query + zustand, CSS propio en `src/styles/` (sin Tailwind).
   - Claves de react-query en `src/lib/queryKeys.js`; tras mover dinero invalidá con `invalidar(qc, DINERO)`.
   - Acciones destructivas pasan por `confirmar(...)` (`src/store/confirmStore`).
   - `QueryState` recibe un único hijo función.
   - Lint con reglas de react-hooks v7: nada de `setState` sincrónico dentro de efectos.
+  - Etiquetas de eventos/tareas con `useEtiquetas()` (`GET /api/calendario/etiquetas/`), no constantes.
   - Gmail/Calendar usan gapi con el token que entrega el backend (`src/features/google/gapiClient.js`).
 
 ## Comandos

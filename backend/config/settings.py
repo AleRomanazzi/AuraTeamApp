@@ -31,6 +31,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 # bases Tareas y Clientes; la integración tiene que estar agregada en "Conexiones" de ambas.
 NOTION_TOKEN = os.getenv("NOTION_TOKEN", "").strip()
 NOTION_TAREAS_DS = os.getenv("NOTION_TAREAS_DS", "b67f1243-7f10-480c-bb2e-158c7fd75196").strip()
+NOTION_TAREAS_PRIVADAS_DS = os.getenv("NOTION_TAREAS_PRIVADAS_DS", "845fb2f7-9b20-4c21-bd0a-a255025d5de9").strip()
 NOTION_CLIENTES_DS = os.getenv("NOTION_CLIENTES_DS", "4f207fc3-c612-4a54-959b-773e4a71b949").strip()
 
 DEBUG = env_bool("DEBUG", False)

@@ -2,7 +2,8 @@ from rest_framework import serializers
 
 from apps.core.permissions import es_admin
 
-from .models import ETIQUETAS_PRIVADAS, EventoUnico
+from . import etiquetas
+from .models import EventoUnico
 
 
 class EventoUnicoSerializer(serializers.ModelSerializer):
@@ -32,9 +33,7 @@ class EventoUnicoSerializer(serializers.ModelSerializer):
 
     def validate_etiqueta(self, value):
         request = self.context.get('request')
-        if value in ETIQUETAS_PRIVADAS and not (request and es_admin(request.user)):
-            raise serializers.ValidationError('Esa etiqueta es solo para los socios.')
-        return value
+        return etiquetas.validar(value, request and request.user, getattr(self.instance, 'etiqueta', None))
 
     def validate(self, attrs):
         inicio = attrs.get('inicio', getattr(self.instance, 'inicio', None))

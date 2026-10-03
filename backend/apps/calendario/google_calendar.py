@@ -1,8 +1,8 @@
 """Eventos y tareas del panel en los calendarios (etiquetas) de la cuenta de Google de la agencia.
 
-Cada evento va al calendario de su etiqueta (CEOs, Coberturas, Historias, Posteos, Edición, Reuniones & Briefing) con el
-color de su cliente; las tareas con fecha van como eventos de día completo al calendario de su etiqueta (Historias,
-Posteos o Edición). Panel → Google al guardar desde la API;
+Cada evento va al calendario de su etiqueta (CEOs, Coberturas, Historias, Posteos, Edición, Reuniones & Briefing y los
+calendarios nuevos de la cuenta, que se detectan solos) con el color de su cliente; las tareas con fecha van como eventos
+de día completo al calendario de su etiqueta. Panel → Google al guardar desde la API;
 Google → panel con la sincronización incremental (syncToken de cada calendario) al abrir Tareas o Calendario, y
 completa desde Configuración → Google. En lo cargado directo en Google, el cliente se reconoce por el color del evento
 o por sus palabras clave en el título.
@@ -25,9 +25,10 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from apps.accounts import google
 from apps.clientes.models import Cliente
-from apps.equipo.models import ETIQUETAS_TAREA, Tarea
+from apps.equipo.models import Tarea
 
-from .models import ETIQUETAS, ETIQUETAS_PRIVADAS, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
+from . import etiquetas
+from .models import LARGO_ETIQUETA, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,6 @@ ENVIAR_DESDE = timedelta(days=30)
 # Tope de tareas que sube cada sincronización, para no pasar el timeout del servidor; el resto va en las siguientes.
 LIMITE_TAREAS = 40
 COLOR_DEFECTO = EventoUnico._meta.get_field('color').default
-ETIQUETAS_NOMBRE = dict(ETIQUETAS)
 # Cómo reconocer cada etiqueta por el nombre del calendario (sin tildes ni espacios).
 PISTAS_ETIQUETA = {
     'ceos': ('ceo',),
@@ -51,7 +51,6 @@ PISTAS_ETIQUETA = {
     'edicion': ('edicion',),
     'reuniones': ('reunion', 'briefing'),
 }
-ETIQUETAS_DE_TAREAS = [e for e, _ in ETIQUETAS_TAREA]
 MIN_PALABRA = 3
 
 
@@ -129,27 +128,52 @@ def _privadas(item: dict) -> dict:
 def calendarios_de_la_cuenta() -> list:
     data = _request('GET', '/users/me/calendarList', params={'maxResults': 250, 'minAccessRole': 'writer'})
     return [
-        {'id': c['id'], 'nombre': c.get('summaryOverride') or c.get('summary') or c['id'], 'color': c.get('backgroundColor')}
+        {
+            'id': c['id'], 'nombre': c.get('summaryOverride') or c.get('summary') or c['id'], 'color': c.get('backgroundColor'),
+            'principal': bool(c.get('primary')),
+        }
         for c in data.get('items', [])
     ]
 
 
+def _etiqueta_libre(nombre: str, usadas: set) -> str:
+    base = _clave(nombre)[: LARGO_ETIQUETA - 3] or 'calendario'
+    valor, n = base, 2
+    while valor in usadas:
+        valor, n = f'{base}{n}', n + 1
+    return valor
+
+
 def vincular_etiquetas() -> None:
-    """Asocia por nombre las etiquetas que todavía no tienen calendario y actualiza los nombres guardados."""
+    """Asocia por nombre las etiquetas base que todavía no tienen calendario, suma como etiqueta nueva cada calendario
+    de la cuenta que no tenga una y actualiza los nombres guardados."""
     cuenta = calendarios_de_la_cuenta()
     por_id = {c['id']: c for c in cuenta}
     actuales = {c.etiqueta: c for c in CalendarioGoogle.objects.all()}
     for etiqueta, pistas in PISTAS_ETIQUETA.items():
         cal = actuales.get(etiqueta)
         if cal is not None and cal.calendar_id in por_id:
-            if cal.nombre != por_id[cal.calendar_id]['nombre']:
-                CalendarioGoogle.objects.filter(pk=cal.pk).update(nombre=por_id[cal.calendar_id]['nombre'])
             continue
         elegido = next((c for c in cuenta if any(p in _clave(c['nombre']) for p in pistas)), None)
         if elegido:
-            CalendarioGoogle.objects.update_or_create(
+            actuales[etiqueta], _ = CalendarioGoogle.objects.update_or_create(
                 etiqueta=etiqueta, defaults={'calendar_id': elegido['id'], 'nombre': elegido['nombre'], 'sync_token': ''}
             )
+    for cal in actuales.values():
+        if cal.calendar_id in por_id and cal.nombre != por_id[cal.calendar_id]['nombre']:
+            CalendarioGoogle.objects.filter(pk=cal.pk).update(nombre=por_id[cal.calendar_id]['nombre'])
+        elif cal.calendar_id not in por_id and cal.etiqueta not in etiquetas.BASE and not cal.oculta:
+            # Calendario borrado (o sin permiso de edición): la etiqueta queda pero deja de ofrecerse y sincronizarse.
+            CalendarioGoogle.objects.filter(pk=cal.pk).update(oculta=True)
+    usados = {c.calendar_id for c in actuales.values()}
+    usadas = set(actuales) | set(PISTAS_ETIQUETA)
+    for c in cuenta:
+        if c['id'] in usados:
+            continue
+        valor = _etiqueta_libre(c['nombre'], usadas)
+        # El calendario principal de la cuenta se suma oculto: un admin decide si se usa.
+        CalendarioGoogle.objects.create(etiqueta=valor, calendar_id=c['id'], nombre=c['nombre'], oculta=c['principal'])
+        usadas.add(valor)
 
 
 def elegir_calendario(etiqueta: str, calendar_id: str) -> CalendarioGoogle:
@@ -168,7 +192,7 @@ def calendario_de(etiqueta: str) -> str:
         vincular_etiquetas()
         cal = CalendarioGoogle.objects.filter(etiqueta=etiqueta).first()
     if cal is None:
-        raise google.GoogleError(f'Falta elegir el calendario de «{ETIQUETAS_NOMBRE[etiqueta]}» en Configuración → Google.')
+        raise google.GoogleError(f'Falta elegir el calendario de «{etiquetas.nombre_de(etiqueta)}» en Configuración → Google.')
     return cal.calendar_id
 
 
@@ -203,10 +227,10 @@ def cliente_por_titulo(titulo: str, clientes: list):
     return mejor
 
 
-def cliente_de(item: dict, clientes: list, etiqueta: str = ''):
+def cliente_de(item: dict, clientes: list, privada: bool = False):
     color = item.get('colorId')
     # En las etiquetas privadas los socios usan colores con otro sentido: ahí el color no identifica al cliente.
-    if color and etiqueta not in ETIQUETAS_PRIVADAS:
+    if color and not privada:
         con_color = [c for c in clientes if c.google_color == color]
         if len(con_color) == 1:
             return con_color[0]
@@ -292,7 +316,7 @@ def al_cambiar_color(cliente):
 
 def enviar_pendientes() -> int:
     """Sube lo que no está en el calendario de su etiqueta: eventos sin copia, sin color o en otro calendario."""
-    destinos = {c.etiqueta: c.calendar_id for c in CalendarioGoogle.objects.all()}
+    destinos = {c.etiqueta: c.calendar_id for c in CalendarioGoogle.objects.filter(oculta=False)}
     enviados = 0
     for ev in EventoUnico.objects.filter(inicio__gte=timezone.now() - ENVIAR_DESDE).select_related('cliente'):
         if ev.etiqueta not in destinos or (ev.google_event_id and ev.google_calendar_id == destinos[ev.etiqueta]):
@@ -379,7 +403,7 @@ def al_borrar_tarea(gid: str, cal_id: str = ''):
 def enviar_tareas() -> tuple[int, int]:
     """Sube de a LIMITE_TAREAS (las más próximas primero) las tareas desactualizadas cuyas etiquetas ya tienen
     calendario elegido. Devuelve (enviadas, pendientes)."""
-    vinculadas = set(CalendarioGoogle.objects.values_list('etiqueta', flat=True))
+    vinculadas = set(CalendarioGoogle.objects.filter(oculta=False).values_list('etiqueta', flat=True))
     enviadas = pendientes = 0
     desde = timezone.localdate() - ENVIAR_DESDE
     candidatas = (
@@ -411,7 +435,7 @@ def _momento(d: dict):
     return None
 
 
-def aplicar_evento(item: dict, cal: CalendarioGoogle, ahora, clientes: list) -> str | None:
+def aplicar_evento(item: dict, cal: CalendarioGoogle, ahora, clientes: list, privada: bool = False) -> str | None:
     """Aplica un evento (no cancelado) de Google al panel. Devuelve 'creados', 'actualizados' o None."""
     inicio = _momento(item.get('start') or {})
     if inicio is None or not (ahora - TRAER_DESDE <= inicio <= ahora + TRAER_HASTA):
@@ -420,7 +444,7 @@ def aplicar_evento(item: dict, cal: CalendarioGoogle, ahora, clientes: list) -> 
     if 'date' in (item.get('start') or {}) and fin:
         # En Google el fin de un evento de día completo es exclusivo (el día siguiente a las 00:00).
         fin = None if fin - inicio <= timedelta(days=1) else fin - timedelta(seconds=1)
-    cliente = cliente_de(item, clientes, cal.etiqueta)
+    cliente = cliente_de(item, clientes, privada)
     datos = {
         'nombre': (item.get('summary') or '(Sin título)')[:120],
         'descripcion': item.get('description') or '',
@@ -470,12 +494,17 @@ def _traer(resumen: dict, ahora):
     clientes = _clientes()
     tareas = dict(Tarea.objects.exclude(google_event_id='').values_list('google_event_id', 'id'))
     cancelados = []
-    for cal in CalendarioGoogle.objects.all():
+    privadas = etiquetas.privadas()
+    for cal in CalendarioGoogle.objects.filter(oculta=False):
         try:
-            items, token = _listar(cal)
-        except Vencido:
-            cal.sync_token = ''
-            items, token = _listar(cal)
+            try:
+                items, token = _listar(cal)
+            except Vencido:
+                cal.sync_token = ''
+                items, token = _listar(cal)
+        except NoEncontrado:
+            # Calendario borrado de la cuenta: vincular_etiquetas lo oculta en la próxima pasada.
+            continue
         for item in items:
             if item.get('status') == 'cancelled':
                 cancelados.append((item['id'], cal.calendar_id))
@@ -488,7 +517,7 @@ def _traer(resumen: dict, ahora):
                 if huerfano and not Tarea.objects.filter(pk=aura_tarea if aura_tarea.isdigit() else 0, google_event_id=item['id']).exists():
                     borrar_evento(cal.calendar_id, item['id'])
                 continue
-            r = aplicar_evento(item, cal, ahora, clientes)
+            r = aplicar_evento(item, cal, ahora, clientes, cal.etiqueta in privadas)
             if r:
                 resumen[r] += 1
         CalendarioGoogle.objects.filter(pk=cal.pk).update(sync_token=token)
@@ -505,11 +534,10 @@ def sincronizar(completa=False) -> dict:
 
     resumen = {'creados': 0, 'actualizados': 0, 'borrados': 0, 'enviados': 0, 'tareas': 0}
     try:
-        if completa or not CalendarioGoogle.objects.exists():
-            vincular_etiquetas()
+        vincular_etiquetas()
         if completa:
             resumen['enviados'] = enviar_pendientes()
-        if CalendarioGoogle.objects.filter(etiqueta__in=ETIQUETAS_DE_TAREAS).exists():
+        if CalendarioGoogle.objects.filter(oculta=False).exists():
             resumen['tareas'], resumen['pendientes'] = enviar_tareas()
         _traer(resumen, inicio)
     except google.GoogleError as e:
@@ -535,7 +563,7 @@ def colores_sugeridos() -> list:
     clientes = [c for c in _clientes() if c.google_color]
     ahora = timezone.now()
     sugeridos = []
-    for cal in CalendarioGoogle.objects.all():
+    for cal in CalendarioGoogle.objects.filter(oculta=False):
         params = {'singleEvents': 'false', 'maxResults': 250, 'timeMin': ahora.isoformat(), 'timeMax': (ahora + TRAER_HASTA).isoformat()}
         while True:
             data = _request('GET', f'{_cal(cal.calendar_id)}/events', params=params)

@@ -7,8 +7,8 @@ from apps.accounts.google import GoogleError
 from apps.core.permissions import IsAdmin, es_admin, persona_de
 from apps.core.utils import aplica_en_mes, fecha_en_mes, money, parse_fecha_param, parse_mes
 
-from . import google_calendar
-from .models import ETIQUETAS, ETIQUETAS_PRIVADAS, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
+from . import etiquetas, google_calendar
+from .models import ETIQUETAS_PRIVADAS, CalendarioGoogle, EstadoCalendarioGoogle, EventoUnico
 from .serializers import EventoUnicoSerializer
 
 
@@ -26,7 +26,7 @@ def eventos_visibles(user):
         asignados = AsignacionCliente.objects.filter(persona=persona, activo=True).values('cliente_id')
         de_tareas = Tarea.objects.filter(asignaciones__persona=persona, cliente__isnull=False).exclude(estado='hecha').values('cliente_id')
         filtro |= Q(cliente_id__in=asignados) | Q(cliente_id__in=de_tareas)
-    return qs.filter(filtro).exclude(etiqueta__in=ETIQUETAS_PRIVADAS)
+    return qs.filter(filtro).exclude(etiqueta__in=etiquetas.privadas())
 
 
 class EventoPermission(permissions.IsAuthenticated):
@@ -77,12 +77,10 @@ class GoogleCalendarEstadoView(APIView):
         cuenta, error_cuenta = [], None
         if conectado:
             try:
-                if CalendarioGoogle.objects.count() < len(ETIQUETAS):
-                    google_calendar.vincular_etiquetas()
+                google_calendar.vincular_etiquetas()
                 cuenta = google_calendar.calendarios_de_la_cuenta()
             except GoogleError as ex:
                 error_cuenta = str(ex)
-        elegidos = {c.etiqueta: c for c in CalendarioGoogle.objects.all()}
         return Response(
             {
                 'conectado': conectado,
@@ -90,33 +88,44 @@ class GoogleCalendarEstadoView(APIView):
                 'ultima_sync_completa': e.ultima_sync_completa,
                 'ultimo_error': e.ultimo_error or error_cuenta,
                 'ultimo_error_en': e.ultimo_error_en,
-                'etiquetas': [
-                    {
-                        'etiqueta': valor, 'nombre': nombre, 'privada': valor in ETIQUETAS_PRIVADAS,
-                        'calendar_id': elegidos[valor].calendar_id if valor in elegidos else None,
-                        'calendario': elegidos[valor].nombre if valor in elegidos else None,
-                    }
-                    for valor, nombre in ETIQUETAS
-                ],
+                'etiquetas': etiquetas.todas(),
                 'calendarios': cuenta,
                 'eventos_en_google': EventoUnico.objects.exclude(google_event_id='').count(),
             }
         )
 
 
+class EtiquetasView(APIView):
+    """Etiquetas que el usuario puede usar en eventos y tareas (sin las ocultas; el equipo, sin las privadas)."""
+
+    def get(self, request):
+        return Response([{k: e[k] for k in ('valor', 'nombre', 'privada')} for e in etiquetas.para(request.user)])
+
+
 class GoogleCalendarEtiquetaView(APIView):
-    """Elige a mano qué calendario de la cuenta corresponde a una etiqueta."""
+    """Elige a mano qué calendario de la cuenta corresponde a una etiqueta, o la marca como privada u oculta."""
 
     permission_classes = [IsAdmin]
 
     def post(self, request):
         etiqueta, calendar_id = request.data.get('etiqueta'), request.data.get('calendar_id')
-        if etiqueta not in dict(ETIQUETAS) or not calendar_id:
-            return Response({'detail': 'Etiqueta o calendario inválido.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            google_calendar.elegir_calendario(etiqueta, calendar_id)
-        except GoogleError as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if etiqueta not in {e['valor'] for e in etiquetas.todas()}:
+            return Response({'detail': 'Etiqueta inválida.'}, status=status.HTTP_400_BAD_REQUEST)
+        if calendar_id:
+            try:
+                google_calendar.elegir_calendario(etiqueta, calendar_id)
+            except GoogleError as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        cambios = {k: bool(request.data[k]) for k in ('privada', 'oculta') if k in request.data}
+        if cambios:
+            if etiqueta in ETIQUETAS_PRIVADAS and cambios.get('privada') is False:
+                return Response({'detail': 'Esa etiqueta es siempre solo para los socios.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not CalendarioGoogle.objects.filter(etiqueta=etiqueta).update(**cambios):
+                return Response({'detail': 'Primero elegí el calendario de esa etiqueta.'}, status=status.HTTP_400_BAD_REQUEST)
+            if cambios.get('privada') is not None:
+                from apps.integraciones import notion
+
+                notion.al_cambiar_privacidad(etiqueta)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -167,6 +176,8 @@ class VencimientosView(APIView):
         inicio, fin, periodo = parse_mes(request.query_params.get('mes'))
         items = []
         tareas = Tarea.objects.exclude(estado='hecha').filter(fecha_limite__range=(inicio, fin)).select_related('cliente')
+        if not es_admin(request.user):
+            tareas = tareas.exclude(etiqueta__in=etiquetas.privadas())
 
         if es_admin(request.user):
             cobros = Cobro.objects.filter(vencimiento__range=(inicio, fin)).exclude(estado='anulado').select_related('cliente')

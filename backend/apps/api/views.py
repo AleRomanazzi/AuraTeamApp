@@ -177,6 +177,7 @@ class MiPanelView(APIView):
 
     def get(self, request):
         from apps.calendario.serializers import EventoUnicoSerializer
+        from apps.calendario.etiquetas import privadas
         from apps.calendario.views import eventos_visibles
         from apps.equipo.serializers import LiquidacionSerializer, TareaSerializer
         from apps.equipo.services import generar_recurrentes
@@ -190,6 +191,7 @@ class MiPanelView(APIView):
             tareas = (
                 Tarea.objects.filter(asignaciones__persona=persona)
                 .exclude(estado='hecha')
+                .exclude(etiqueta__in=privadas())
                 .select_related('cliente')
                 .prefetch_related('asignaciones__persona')
                 .distinct()

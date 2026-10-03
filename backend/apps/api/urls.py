@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.accounts.views import UsuarioViewSet
 from apps.calendario.views import (
+    EtiquetasView,
     EventoUnicoViewSet,
     GoogleCalendarColoresView,
     GoogleCalendarEstadoView,
@@ -43,6 +44,7 @@ urlpatterns = [
     path('calendario/vencimientos/', VencimientosView.as_view(), name='api-vencimientos'),
     path('calendario/google/', GoogleCalendarEstadoView.as_view(), name='api-calendario-google'),
     path('calendario/google/sincronizar/', GoogleCalendarSincronizarView.as_view(), name='api-calendario-google-sync'),
+    path('calendario/etiquetas/', EtiquetasView.as_view(), name='api-calendario-etiquetas'),
     path('calendario/google/etiqueta/', GoogleCalendarEtiquetaView.as_view(), name='api-calendario-google-etiqueta'),
     path('calendario/google/colores/', GoogleCalendarColoresView.as_view(), name='api-calendario-google-colores'),
     path('me/config/', MeConfigView.as_view(), name='api-me-config'),

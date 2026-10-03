@@ -417,6 +417,8 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .config-tabs { margin-bottom: 20px; }
 .vinculo-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1.6fr); gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .vinculo-row:last-child { border-bottom: none; }
+.etiqueta-row { grid-template-columns: minmax(120px, 1fr) auto minmax(0, 1.3fr); }
+.etiqueta-row .check-row { margin: 0; min-height: 0; }
 .vinculo-row > span { color: var(--text); font-size: 14px; }
 .pintar-lista { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 4px 12px; }
 .pintar-fila { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--border); }

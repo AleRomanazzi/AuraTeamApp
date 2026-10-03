@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
-import { useMe, usePersonas } from '../../hooks/useData'
+import { opcionesEtiqueta, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { DIAS_SEMANA, ETIQUETAS_TAREA, labelDe } from '../../lib/constants'
+import { DIAS_SEMANA, labelDe } from '../../lib/constants'
 import { celdasMes, currentMonth, formatFecha, iniciales, monthLabel, shiftMonth } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { TAREAS, invalidar } from '../../lib/queryKeys'
@@ -34,6 +34,7 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
   const qc = useQueryClient()
   const { data: me } = useMe()
   const { data: personas = [] } = usePersonas()
+  const etiquetas = useEtiquetas()
   const [mes, setMes] = useState(() => shiftMonth(currentMonth(), new Date().getDate() >= 20 ? 1 : 0))
   const [borrador, setBorrador] = useState([])
   const [rapida, setRapida] = useState(null)
@@ -141,7 +142,7 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
               <li key={t.id} className={t.estado === 'hecha' ? 'plan-hecha' : ''}>
                 <span className="plan-fecha">{formatFecha(t.fecha_limite, { weekday: 'short', day: 'numeric' })}</span>
                 <span className="plan-titulo">{t.titulo}</span>
-                <span className="muted small">{labelDe(ETIQUETAS_TAREA, t.etiqueta)}</span>
+                <span className="muted small">{labelDe(etiquetas, t.etiqueta)}</span>
                 <span className="muted small">{t.asignados.map(nombre).join(', ')}</span>
               </li>
             ))}
@@ -170,7 +171,7 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
             </Field>
             <Field label="Calendario">
               <select value={rapida.etiqueta} onChange={(e) => setRapida((r) => ({ ...r, etiqueta: e.target.value }))}>
-                {ETIQUETAS_TAREA.map((e) => (
+                {opcionesEtiqueta(etiquetas, rapida.etiqueta).map((e) => (
                   <option key={e.value} value={e.value}>
                     {e.label}
                   </option>
@@ -256,7 +257,7 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
                       {repetida ? <span className="small down">Ya existe ese día</span> : null}
                     </div>
                     <select className="select-sm" aria-label="Calendario" value={f.etiqueta} onChange={(e) => editar(f.key, { etiqueta: e.target.value })}>
-                      {ETIQUETAS_TAREA.map((e) => (
+                      {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                         <option key={e.value} value={e.value}>
                           {e.label}
                         </option>

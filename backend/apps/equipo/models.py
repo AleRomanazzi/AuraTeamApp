@@ -24,8 +24,8 @@ ESTADO_LIQUIDACION = [
     ('anulada', 'Anulada'),
 ]
 ORIGEN_LIQUIDACION = [('asignacion', 'Asignación a cliente'), ('base', 'Honorario base'), ('manual', 'Manual')]
-# Etiquetas (calendarios de Google) a las que puede ir una tarea con fecha; subconjunto de calendario.ETIQUETAS.
-ETIQUETAS_TAREA = [('historias', 'Historias'), ('posteos', 'Posteos'), ('edicion', 'Edición')]
+# Largo del campo etiqueta (calendario de Google de la agencia, ver calendario.etiquetas).
+LARGO_ETIQUETA = 40
 
 
 class Persona(models.Model):
@@ -62,10 +62,12 @@ class Tarea(models.Model):
     notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
     # Huella de los campos sincronizados la última vez que panel y Notion coincidieron: evita reaplicar ecos propios.
     notion_huella = models.CharField(max_length=64, blank=True)
-    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS_TAREA, default='historias')
+    # La página está en la base privada de Notion (etiquetas solo para admins) y no en «Tareas».
+    notion_privada = models.BooleanField(default=False)
+    etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     recurrente = models.ForeignKey('TareaRecurrente', null=True, blank=True, on_delete=models.SET_NULL, related_name='tareas')
     # Evento de día completo en el calendario de Google de su etiqueta. Vacío con google_event_id cargado = Historias
-    # (antes Operaciones).
+    # (antes Operaciones). Si la etiqueta es privada, la página de Notion va a la base de tareas privadas.
     google_event_id = models.CharField(max_length=255, blank=True)
     google_calendar_id = models.CharField(max_length=255, blank=True)
     google_huella = models.CharField(max_length=64, blank=True)
@@ -86,7 +88,7 @@ class TareaRecurrente(models.Model):
     personas = models.ManyToManyField(Persona, blank=True, related_name='recurrentes')
     dias = models.JSONField(default=list)
     por_dia = models.PositiveSmallIntegerField(default=1)
-    etiqueta = models.CharField(max_length=12, choices=ETIQUETAS_TAREA, default='historias')
+    etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
     activa = models.BooleanField(default=True)
     generada_hasta = models.DateField(null=True, blank=True)

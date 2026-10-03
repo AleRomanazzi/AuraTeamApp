@@ -1,5 +1,8 @@
 """Sincronización de Tareas entre el panel y la base «Tareas» de Notion (en los dos sentidos).
 
+Las tareas con etiquetas privadas (solo admins, p. ej. CEOs) van a una base aparte, «Tareas · CEOs», compartida solo
+con los socios; si cambian de etiqueta, su página se mueve de base.
+
 - Panel → Notion: cada alta, edición o baja de una tarea en el panel se envía en el momento.
 - Notion → Panel: llega por webhook y, como respaldo, por una consulta incremental (throttled) y una completa manual.
 - Para no reaplicar ecos propios se guarda en cada tarea una huella de los campos sincronizados.
@@ -23,6 +26,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.calendario.etiquetas import privadas as etiquetas_privadas
 from apps.clientes.models import Cliente
 from apps.equipo.models import AsignacionTarea, Persona, Tarea
 
@@ -158,9 +162,9 @@ def _rich(texto: str):
     return [{'type': 'text', 'text': {'content': t}} for t in trozos]
 
 
-def _datos_pagina(page) -> dict:
+def _datos_pagina(page, privada=False) -> dict:
     p = page.get('properties') or {}
-    return {
+    datos = {
         'titulo': _texto(p.get(P_TITULO)).strip()[:200],
         'descripcion': _texto(p.get(P_NOTAS)),
         'estado': ESTADOS_INV.get(_select(p.get(P_ESTADO)), 'pendiente'),
@@ -169,12 +173,16 @@ def _datos_pagina(page) -> dict:
         'cliente': _ids(p.get(P_CLIENTE), 'relation'),
         'personas': _ids(p.get(P_RESPONSABLE), 'people'),
     }
+    # Solo se agrega en las privadas para no alterar las huellas ya guardadas de las demás.
+    if privada:
+        datos['privada'] = True
+    return datos
 
 
-def _datos_tarea(tarea: Tarea) -> dict:
+def _datos_tarea(tarea: Tarea, privada=False) -> dict:
     uids = Persona.objects.filter(asignaciones__tarea=tarea).exclude(notion_user_id='').values_list('notion_user_id', flat=True)
     cliente = tarea.cliente if tarea.cliente_id else None
-    return {
+    datos = {
         'titulo': tarea.titulo.strip()[:200],
         'descripcion': tarea.descripcion,
         'estado': tarea.estado,
@@ -183,6 +191,9 @@ def _datos_tarea(tarea: Tarea) -> dict:
         'cliente': [_norm(cliente.notion_page_id)] if cliente and cliente.notion_page_id else [],
         'personas': sorted(_norm(u) for u in uids),
     }
+    if privada:
+        datos['privada'] = True
+    return datos
 
 
 def _huella(datos: dict) -> str:
@@ -204,25 +215,48 @@ def _propiedades(d: dict) -> dict:
 # --- Panel → Notion --------------------------------------------------------------------------------------------------
 
 
+def _ds_de(privada: bool) -> str:
+    return settings.NOTION_TAREAS_PRIVADAS_DS if privada else settings.NOTION_TAREAS_DS
+
+
+def _bases():
+    """(data source, privada) de las bases de tareas configuradas."""
+    return [(ds, privada) for privada in (False, True) if (ds := _ds_de(privada))]
+
+
 def enviar_tarea(tarea: Tarea):
-    datos = _datos_tarea(tarea)
+    privada = tarea.etiqueta in etiquetas_privadas()
+    ds = _ds_de(privada)
+    datos = _datos_tarea(tarea, privada)
     props = _propiedades(datos)
-    page_id = tarea.notion_page_id
-    if page_id:
+    page_id = vieja = tarea.notion_page_id
+    if page_id and tarea.notion_privada != privada:
+        page_id = None
+    elif page_id:
         try:
             _request('PATCH', f'/pages/{page_id}', {'properties': props})
         except NoEncontrada:
             page_id = None
-    if not page_id:
-        page = _request(
-            'POST', '/pages', {'parent': {'type': 'data_source_id', 'data_source_id': settings.NOTION_TAREAS_DS}, 'properties': props}
-        )
+    if not page_id and ds:
+        try:
+            page = _request('POST', '/pages', {'parent': {'type': 'data_source_id', 'data_source_id': ds}, 'properties': props})
+        except NoEncontrada as e:
+            if privada:
+                raise NotionError('La integración no está conectada a la base «Tareas · CEOs» de Notion.') from e
+            raise
         page_id = _norm(page['id'])
         # El webhook de la página recién creada puede llegar antes de guardar el vínculo y crear un eco: se descarta.
         Tarea.objects.filter(notion_page_id=page_id).exclude(pk=tarea.pk).delete()
     tarea.notion_page_id = page_id
-    tarea.notion_huella = _huella(datos)
-    Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=page_id, notion_huella=tarea.notion_huella)
+    tarea.notion_huella = _huella(datos) if page_id else ''
+    tarea.notion_privada = privada
+    Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=page_id, notion_huella=tarea.notion_huella, notion_privada=privada)
+    if vieja and vieja != page_id:
+        # Cambió de base: la página vieja se borra después de vincular la nueva, así su webhook no borra la tarea.
+        try:
+            _request('PATCH', f'/pages/{vieja}', {'in_trash': True})
+        except NoEncontrada:
+            pass
 
 
 def _seguro(fn, *args):
@@ -246,6 +280,12 @@ def al_vincular_persona(persona: Persona):
         _seguro(reenviar_tareas, Q(asignaciones__persona=persona))
 
 
+def al_cambiar_privacidad(etiqueta: str):
+    """Una etiqueta pasó a ser (o dejó de ser) privada: sus tareas se mudan de base en Notion."""
+    if configurado():
+        _seguro(reenviar_tareas, Q(etiqueta=etiqueta))
+
+
 def al_borrar_tarea(page_id):
     if configurado() and page_id:
         _seguro(lambda: _request('PATCH', f'/pages/{page_id}', {'in_trash': True}))
@@ -254,10 +294,11 @@ def al_borrar_tarea(page_id):
 # --- Notion → Panel --------------------------------------------------------------------------------------------------
 
 
-def aplicar_pagina(page, candidatos=None, forzar_clientes=()):
-    """Aplica una página de la base Tareas al panel. Devuelve 'creada', 'actualizada', 'vinculada', 'borrada' o None.
+def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
+    """Aplica una página de una base de tareas al panel. Devuelve 'creada', 'actualizada', 'vinculada', 'borrada' o None.
 
     `forzar_clientes`: páginas de clientes recién vinculados; sus tareas se reaplican aunque la huella no cambie.
+    `privada`: la página es de la base privada; sus tareas llevan una etiqueta privada.
     """
     pid = _norm(page['id'])
     tarea = Tarea.objects.filter(notion_page_id=pid).first()
@@ -266,7 +307,7 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=()):
             tarea.delete()
             return 'borrada'
         return None
-    datos = _datos_pagina(page)
+    datos = _datos_pagina(page, privada)
     if not datos['titulo']:
         return None
     huella = _huella(datos)
@@ -304,6 +345,12 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=()):
             cliente = Cliente.objects.filter(notion_page_id=datos['cliente'][0]).first()
             if cliente:
                 tarea.cliente = cliente
+        privadas = etiquetas_privadas()
+        if privada and tarea.etiqueta not in privadas:
+            tarea.etiqueta = 'ceos'
+        elif not privada and tarea.etiqueta in privadas:
+            tarea.etiqueta = Tarea._meta.get_field('etiqueta').default
+        tarea.notion_privada = privada
         tarea.notion_huella = huella
         tarea.save()
         _aplicar_responsables(tarea, datos['personas'])
@@ -331,10 +378,11 @@ def procesar_evento(evento: dict):
     except NoEncontrada:
         borradas, _ = Tarea.objects.filter(notion_page_id=pid).delete()
         return 'borrada' if borradas else None
-    ds = (page.get('parent') or {}).get('data_source_id')
-    if not ds or _norm(ds) != _norm(settings.NOTION_TAREAS_DS):
-        return None
-    return aplicar_pagina(page)
+    ds = _norm((page.get('parent') or {}).get('data_source_id') or '')
+    for base, privada in _bases():
+        if ds == _norm(base):
+            return aplicar_pagina(page, privada=privada)
+    return None
 
 
 def firma_valida(cuerpo: bytes, firma: str, token: str) -> bool:
@@ -380,15 +428,18 @@ def vincular_clientes() -> dict:
     }
 
 
-def _sin_pagina():
+def _sin_pagina(sin_privadas=False):
     limite = timezone.now() - timedelta(days=DIAS_HECHAS_A_ENVIAR)
-    return Tarea.objects.filter(notion_page_id__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
+    qs = Tarea.objects.filter(notion_page_id__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
+    if sin_privadas or not settings.NOTION_TAREAS_PRIVADAS_DS:
+        qs = qs.exclude(etiqueta__in=etiquetas_privadas())
+    return qs
 
 
-def enviar_pendientes() -> int:
+def enviar_pendientes(sin_privadas=False) -> int:
     """Sube de a LIMITE_ENVIO las tareas que todavía no tienen página (recurrentes, planes del mes, envíos fallidos)."""
     n = 0
-    for pk in _sin_pagina().values_list('pk', flat=True)[:LIMITE_ENVIO]:
+    for pk in _sin_pagina(sin_privadas).values_list('pk', flat=True)[:LIMITE_ENVIO]:
         # El bloqueo evita que dos sincronizaciones simultáneas creen dos páginas para la misma tarea.
         with transaction.atomic():
             tarea = Tarea.objects.select_for_update(skip_locked=True).filter(pk=pk, notion_page_id__isnull=True).first()
@@ -451,15 +502,26 @@ def sincronizar(completa=False) -> dict:
             filtro = {'timestamp': 'last_edited_time', 'last_edited_time': {'on_or_after': desde.isoformat()}}
         candidatos = {_clave(t.titulo): t for t in Tarea.objects.filter(notion_page_id__isnull=True)} if completa else None
 
-        vistas = set()
-        for page in _consultar(settings.NOTION_TAREAS_DS, filtro):
-            vistas.add(_norm(page['id']))
-            r = aplicar_pagina(page, candidatos, forzar_clientes)
-            if r:
-                resumen[{'creada': 'creadas', 'actualizada': 'actualizadas', 'vinculada': 'vinculadas', 'borrada': 'borradas'}[r]] += 1
+        vistas, sin_leer = set(), []
+        for ds, privada in _bases():
+            try:
+                paginas = list(_consultar(ds, filtro))
+            except NoEncontrada:
+                if not privada:
+                    raise
+                # La base privada todavía no está conectada a la integración: el resto se sincroniza igual.
+                sin_leer.append(privada)
+                resumen['privadas_sin_conectar'] = True
+                continue
+            for page in paginas:
+                vistas.add(_norm(page['id']))
+                r = aplicar_pagina(page, candidatos, forzar_clientes, privada)
+                if r:
+                    resumen[{'creada': 'creadas', 'actualizada': 'actualizadas', 'vinculada': 'vinculadas', 'borrada': 'borradas'}[r]] += 1
 
         if completa:
-            for tarea in Tarea.objects.exclude(notion_page_id=None).exclude(notion_page_id__in=vistas):
+            sobrantes = Tarea.objects.exclude(notion_page_id=None).exclude(notion_page_id__in=vistas).exclude(notion_privada__in=sin_leer)
+            for tarea in sobrantes:
                 try:
                     page = _request('GET', f'/pages/{tarea.notion_page_id}')
                 except NoEncontrada:
@@ -469,12 +531,12 @@ def sincronizar(completa=False) -> dict:
                     resumen['borradas'] += 1
                 else:
                     Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=None, notion_huella='')
-            for tarea in _sin_pagina().select_related('cliente'):
+            for tarea in _sin_pagina(bool(sin_leer)).select_related('cliente'):
                 enviar_tarea(tarea)
                 resumen['enviadas'] += 1
         else:
-            resumen['enviadas'] = enviar_pendientes()
-            resumen['pendientes'] = _sin_pagina().count()
+            resumen['enviadas'] = enviar_pendientes(bool(sin_leer))
+            resumen['pendientes'] = _sin_pagina(bool(sin_leer)).count()
     except NotionError as e:
         registrar_error(str(e))
         raise

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import QueryState from '../ui/QueryState'
 import Tag from '../ui/Tag'
 import { api } from '../../lib/api'
-import { COLORES_GOOGLE, ETIQUETAS, labelDe } from '../../lib/constants'
+import { COLORES_GOOGLE } from '../../lib/constants'
 import { formatFechaHora } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { QK, invalidar } from '../../lib/queryKeys'
@@ -23,7 +23,7 @@ function resumenSync(r) {
   return partes.length ? `Sincronizado: ${partes.join(' · ')}` : 'Todo al día: no hubo cambios'
 }
 
-function Pintar() {
+function Pintar({ nombres }) {
   const qc = useQueryClient()
   const [sugeridos, setSugeridos] = useState(null)
   const [elegidos, setElegidos] = useState(new Set())
@@ -77,7 +77,7 @@ function Pintar() {
                 <i className="cat-dot" style={{ background: hexDe(s.color_id) }} />
                 <span className="pintar-titulo">{s.titulo}</span>
                 <span className="muted small nowrap">
-                  {s.cliente_nombre} · {labelDe(ETIQUETAS, s.etiqueta)}
+                  {s.cliente_nombre} · {nombres[s.etiqueta] ?? s.etiqueta}
                   {s.repetitivo ? ' · se repite' : ` · ${formatFechaHora(s.inicio)}`}
                 </span>
               </label>
@@ -119,11 +119,17 @@ export default function CalendariosGoogle() {
   const elegir = useMutation({
     mutationFn: (body) => api.post('calendario/google/etiqueta/', body),
     onSuccess: () => {
-      invalidar(qc, ['cal-google'])
+      invalidar(qc, ['cal-google', 'cal-eventos', 'tareas'])
       notify('Etiqueta actualizada')
     },
     onError: (e) => notifyError(e),
   })
+  const cambiarPrivada = async (et) => {
+    const mensaje = et.privada
+      ? `«${et.nombre}» la va a poder ver y usar todo el equipo, y sus tareas pasan a la base Tareas de Notion.`
+      : `«${et.nombre}» va a quedar solo para los socios: el equipo deja de ver sus eventos y tareas, que pasan a la base privada de Notion.`
+    if (await confirmar({ mensaje, confirmar: et.privada ? 'Abrir al equipo' : 'Hacer privada' })) elegir.mutate({ etiqueta: et.valor, privada: !et.privada })
+  }
   if (q.isSuccess && !q.data.conectado) return null
 
   return (
@@ -135,20 +141,43 @@ export default function CalendariosGoogle() {
         {(e) => (
           <>
             <p className="small muted">
-              Cada evento del panel se guarda en el calendario de su etiqueta, con el color de su cliente; las tareas con fecha van como día completo al calendario que tengan elegido (Historias, Posteos o Edición). Lo que se carga
+              Cada evento del panel se guarda en el calendario de su etiqueta, con el color de su cliente; las tareas con fecha van como día completo al calendario de la suya. Lo que se carga
               directo en estos calendarios aparece en el panel, con el cliente reconocido por el color o por el título.
+            </p>
+            <p className="small muted">
+              Los calendarios nuevos de la cuenta aparecen solos como etiquetas. «Solo socios» la esconde del equipo (y sus tareas van a la base privada de Notion); «Ocultar» la saca de los formularios y de la sincronización.
             </p>
             <div>
               {e.etiquetas.map((et) => (
-                <div key={et.etiqueta} className="vinculo-row">
+                <div key={et.valor} className="vinculo-row etiqueta-row">
                   <span>
-                    {et.nombre} {et.privada ? <Tag>solo socios</Tag> : null}
+                    {et.nombre} {et.privada ? <Tag>solo socios</Tag> : null} {et.oculta ? <Tag>oculta</Tag> : null}
+                  </span>
+                  <span className="header-actions">
+                    <label className="check-row small" title={et.valor === 'ceos' ? 'AuraTeam CEOs es siempre solo para los socios' : undefined}>
+                      <input
+                        type="checkbox"
+                        checked={et.privada}
+                        disabled={elegir.isPending || !et.calendar_id || et.valor === 'ceos'}
+                        onChange={() => cambiarPrivada(et)}
+                      />
+                      Solo socios
+                    </label>
+                    <label className="check-row small">
+                      <input
+                        type="checkbox"
+                        checked={et.oculta}
+                        disabled={elegir.isPending || !et.calendar_id}
+                        onChange={() => elegir.mutate({ etiqueta: et.valor, oculta: !et.oculta })}
+                      />
+                      Ocultar
+                    </label>
                   </span>
                   <select
                     aria-label={`Calendario de ${et.nombre}`}
                     value={et.calendar_id || ''}
                     disabled={elegir.isPending || !e.calendarios.length}
-                    onChange={(ev) => ev.target.value && elegir.mutate({ etiqueta: et.etiqueta, calendar_id: ev.target.value })}
+                    onChange={(ev) => ev.target.value && elegir.mutate({ etiqueta: et.valor, calendar_id: ev.target.value })}
                   >
                     <option value="">— Sin elegir —</option>
                     {e.calendarios.map((c) => (
@@ -172,7 +201,7 @@ export default function CalendariosGoogle() {
             <button type="button" className="btn btn-primary btn-sm" disabled={sincronizar.isPending} onClick={() => sincronizar.mutate()}>
               {sincronizar.isPending ? 'Sincronizando…' : '⟳ Sincronizar todo'}
             </button>
-            <Pintar />
+            <Pintar nombres={Object.fromEntries(e.etiquetas.map((et) => [et.valor, et.nombre]))} />
           </>
         )}
       </QueryState>

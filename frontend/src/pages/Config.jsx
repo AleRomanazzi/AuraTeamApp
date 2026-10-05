@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import CalendariosGoogle from '../components/config/CalendariosGoogle'
 import NotionConfig from '../components/config/NotionConfig'
+import PlantillaOnboarding from '../components/config/PlantillaOnboarding'
 import Field from '../components/ui/Field'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
@@ -175,9 +176,16 @@ function Google({ me }) {
             {!estado.configurado ? (
               <div className="info-box">Faltan las credenciales de Google en el servidor (AURA_GOOGLE_CLIENT_ID y AURA_GOOGLE_CLIENT_SECRET).</div>
             ) : estado.conectado ? (
-              <div className="info-box">
-                La cuenta queda conectada de forma permanente para todo el panel: no hace falta volver a iniciar sesión en Google en cada navegador ni al entrar.
-              </div>
+              <>
+                <div className="info-box">
+                  La cuenta queda conectada de forma permanente para todo el panel: no hace falta volver a iniciar sesión en Google en cada navegador ni al entrar.
+                </div>
+                {!estado.drive && me.es_admin ? (
+                  <div className="info-box down" style={{ marginTop: 8 }}>
+                    Falta el permiso de Google Drive para crear solas las carpetas de los clientes: tocá «Cambiar o reconectar cuenta» y aceptá los permisos (una sola vez).
+                  </div>
+                ) : null}
+              </>
             ) : (
               <div className="info-box">
                 Conectá una sola vez la cuenta de la agencia{estado.cuenta_sugerida ? ` (${estado.cuenta_sugerida})` : ''}. Google te va a pedir que elijas la cuenta y aceptes los permisos de Gmail y Calendar.
@@ -606,6 +614,7 @@ export default function Config() {
           { value: 'notion', label: 'Notion' },
           { value: 'usuarios', label: 'Usuarios' },
           { value: 'categorias', label: 'Categorías' },
+          { value: 'onboarding', label: 'Onboarding' },
           { value: 'datos', label: 'Datos' },
         ]
       : []),
@@ -623,6 +632,7 @@ export default function Config() {
       {actual === 'notion' ? <NotionConfig /> : null}
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
       {actual === 'categorias' ? <Categorias /> : null}
+      {actual === 'onboarding' ? <PlantillaOnboarding /> : null}
       {actual === 'datos' ? <Datos /> : null}
     </>
   )

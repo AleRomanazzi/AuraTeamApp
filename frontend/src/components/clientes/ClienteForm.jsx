@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import { COLORES, COLORES_GOOGLE, ESTADOS_CLIENTE } from '../../lib/constants'
 import { todayISO } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
+import { TAREAS, invalidar } from '../../lib/queryKeys'
 
 const VACIO = {
   nombre: '',
@@ -26,16 +27,17 @@ const VACIO = {
 export default function ClienteForm({ inicial, onClose, onGuardado }) {
   const qc = useQueryClient()
   const [f, setF] = useState(() => ({ ...VACIO, ...(inicial || {}) }))
+  const [onboarding, setOnboarding] = useState(true)
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
 
   const guardar = useMutation({
     mutationFn: () => {
       const body = Object.fromEntries(Object.keys(VACIO).map((k) => [k, f[k]]))
-      return (inicial?.id ? api.put(`clientes/${inicial.id}/`, body) : api.post('clientes/', body)).then((r) => r.data)
+      return (inicial?.id ? api.put(`clientes/${inicial.id}/`, body) : api.post('clientes/', { ...body, onboarding })).then((r) => r.data)
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['clientes'] })
-      notify(inicial?.id ? 'Cliente actualizado' : 'Cliente creado')
+      invalidar(qc, inicial?.id ? ['clientes'] : ['clientes', ...TAREAS])
+      notify(inicial?.id ? 'Cliente actualizado' : onboarding ? 'Cliente creado con su onboarding' : 'Cliente creado')
       onGuardado?.(data)
       onClose()
     },
@@ -121,6 +123,11 @@ export default function ClienteForm({ inicial, onClose, onGuardado }) {
       <Field label="Notas">
         <textarea rows={3} value={f.notas} onChange={set('notas')} />
       </Field>
+      {!inicial?.id ? (
+        <label className="check-row">
+          <input type="checkbox" checked={onboarding} onChange={(e) => setOnboarding(e.target.checked)} /> Iniciar el onboarding (tareas de la plantilla y carpeta de Drive)
+        </label>
+      ) : null}
     </Modal>
   )
 }

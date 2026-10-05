@@ -356,4 +356,6 @@ class SeguimientoView(APIView):
         valores = [p['cumplimiento_7'] for p in personas if p['cumplimiento_7'] is not None]
         totales['cumplimiento_7'] = round(sum(valores) / len(valores)) if valores else None
         totales['en_rojo'] = sum(1 for p in personas if p['semaforo'] == 'rojo')
-        return Response({'fecha': fecha, 'totales': totales, 'personas': personas, 'onboarding_atrasado': []})
+        from apps.clientes.onboarding import atrasados
+
+        return Response({'fecha': fecha, 'totales': totales, 'personas': personas, 'onboarding_atrasado': atrasados(fecha)})

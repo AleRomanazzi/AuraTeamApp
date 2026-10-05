@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.core.utils import MES_RE, equivalente_mensual, money, today
 
-from .models import AjustePrecio, Cliente, Cobro, Contrato
+from .models import AjustePrecio, Cliente, Cobro, Contrato, PasoOnboarding
 
 
 def fee_mensual_de(cliente) -> Decimal:
@@ -31,7 +31,9 @@ class ClienteFichaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cliente
-        fields = ('id', 'nombre', 'rubro', 'contacto', 'email', 'whatsapp', 'estado', 'fecha_alta', 'color', 'notas', 'asignados')
+        fields = (
+            'id', 'nombre', 'rubro', 'contacto', 'email', 'whatsapp', 'estado', 'fecha_alta', 'color', 'notas', 'asignados', 'drive_url',
+        )
         read_only_fields = fields
 
     def get_asignados(self, obj):
@@ -53,9 +55,9 @@ class ClienteSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'nombre', 'razon_social', 'cuit', 'rubro', 'contacto', 'email', 'whatsapp', 'estado',
             'fecha_alta', 'color', 'notas', 'creado', 'deuda', 'deuda_vencida', 'fee_mensual', 'asignados',
-            'google_color', 'palabras_clave',
+            'google_color', 'palabras_clave', 'drive_url', 'onboarding_iniciado',
         )
-        read_only_fields = ('id', 'creado')
+        read_only_fields = ('id', 'creado', 'drive_url', 'onboarding_iniciado')
 
     def get_deuda(self, obj):
         return str(money(getattr(obj, 'deuda_total', None) or 0))
@@ -182,3 +184,15 @@ class RegistrarPagoSerializer(serializers.Serializer):
     )
     comprobante = serializers.CharField(max_length=80, required=False, allow_blank=True, default='')
     notas = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class PasoOnboardingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PasoOnboarding
+        fields = ('id', 'orden', 'titulo', 'descripcion', 'rol', 'dias_desde_alta', 'etiqueta', 'accion', 'activo')
+
+    def validate_etiqueta(self, value):
+        from apps.calendario import etiquetas
+
+        request = self.context.get('request')
+        return etiquetas.validar(value, request and request.user, getattr(self.instance, 'etiqueta', None))

@@ -7,6 +7,8 @@ export const QK = {
   clientes: ['clientes'],
   cliente: (id) => ['clientes', id],
   clienteRentabilidad: (id) => ['clientes', id, 'rentabilidad'],
+  clienteOnboarding: (id) => ['clientes', id, 'onboarding'],
+  onboardingPasos: ['onboarding-pasos'],
   clienteReporte: (id, mes) => ['clientes', id, 'reporte', mes],
   clienteEvolucion: (id, plataforma) => ['clientes', id, 'evolucion', plataforma],
   contratos: (params) => ['contratos', params],

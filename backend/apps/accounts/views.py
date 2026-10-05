@@ -70,6 +70,7 @@ class GoogleEstadoView(APIView):
                 'conectado': c is not None,
                 'email': c.email if c else None,
                 'conectada_en': c.conectada_en if c else None,
+                'drive': bool(c and 'drive.file' in c.scopes),
                 'cuenta_sugerida': settings.AURA_GOOGLE_LOGIN_HINT or None,
             }
         )

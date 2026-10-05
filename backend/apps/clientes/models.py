@@ -60,12 +60,47 @@ class Cliente(models.Model):
     google_color = models.CharField(max_length=2, blank=True, choices=[(k, v[0]) for k, v in COLORES_GOOGLE.items()])
     # Separadas por coma; sirven para reconocer al cliente en títulos de eventos cargados directo en Google.
     palabras_clave = models.CharField(max_length=200, blank=True)
+    drive_folder_id = models.CharField(max_length=80, blank=True)
+    onboarding_iniciado = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['nombre']
 
     def __str__(self):
         return self.nombre
+
+    @property
+    def drive_url(self) -> str:
+        return f'https://drive.google.com/drive/folders/{self.drive_folder_id}' if self.drive_folder_id else ''
+
+
+ROLES_ONBOARDING = [
+    ('admin', 'Socios'),
+    ('cm', 'Community manager'),
+    ('editor', 'Editor de video'),
+    ('disenio', 'Diseño'),
+    ('foto', 'Fotografía / Filmmaker'),
+]
+ACCIONES_ONBOARDING = [('', 'Tarea'), ('drive', 'Crear la carpeta de Drive')]
+
+
+class PasoOnboarding(models.Model):
+    """Paso de la plantilla de onboarding: al dar de alta un cliente se convierte en una tarea para el rol indicado."""
+
+    orden = models.PositiveSmallIntegerField(default=0)
+    titulo = models.CharField(max_length=160)
+    descripcion = models.TextField(blank=True)
+    rol = models.CharField(max_length=10, choices=ROLES_ONBOARDING, default='cm')
+    dias_desde_alta = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(90)])
+    etiqueta = models.CharField(max_length=40, default='reuniones')
+    accion = models.CharField(max_length=10, choices=ACCIONES_ONBOARDING, blank=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['orden', 'id']
+
+    def __str__(self):
+        return self.titulo
 
 
 class Contrato(models.Model):

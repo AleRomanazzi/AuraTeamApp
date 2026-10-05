@@ -60,6 +60,17 @@ function EquipoHoyCard() {
           </Link>
         ))}
       </div>
+      {q.data.onboarding_atrasado.length ? (
+        <div className="small down" style={{ marginTop: 8 }}>
+          Onboarding atrasado:{' '}
+          {q.data.onboarding_atrasado.map((o, i) => (
+            <span key={o.cliente}>
+              {i ? ', ' : ''}
+              <Link to={`/clientes/${o.cliente}`}>{o.nombre}</Link>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

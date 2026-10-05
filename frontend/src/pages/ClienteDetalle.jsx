@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AjusteForm from '../components/clientes/AjusteForm'
 import ClienteForm from '../components/clientes/ClienteForm'
 import ContratoForm from '../components/clientes/ContratoForm'
+import OnboardingCliente from '../components/clientes/OnboardingCliente'
 import CobrosTabla from '../components/cobros/CobrosTabla'
 import AsignacionForm from '../components/equipo/AsignacionForm'
 import BarChart from '../components/ui/BarChart'
@@ -477,7 +478,12 @@ export default function ClienteDetalle() {
               />
             </div>
 
-            {tab === 'resumen' ? <Resumen cliente={c} /> : null}
+            {tab === 'resumen' ? (
+              <>
+                <Resumen cliente={c} />
+                <OnboardingCliente clienteId={clienteId} esAdmin={esAdmin} />
+              </>
+            ) : null}
             {tab === 'tareas' ? <TareasCliente clienteId={clienteId} /> : null}
             {tab === 'contratos' ? <Contratos clienteId={clienteId} /> : null}
             {tab === 'cobros' ? <CobrosCliente clienteId={clienteId} /> : null}

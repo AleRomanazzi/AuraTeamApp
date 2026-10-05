@@ -629,3 +629,17 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .equipo-hoy-mini { display: flex; flex-wrap: wrap; gap: 8px; }
 .equipo-hoy-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: var(--surface2); color: var(--text); font-size: 13px; text-decoration: none; }
 .equipo-hoy-chip:hover { background: var(--surface3); }
+
+/* ===== Plantilla de onboarding ===== */
+.onb-lista { display: flex; flex-direction: column; gap: 8px; }
+.onb-paso { display: grid; grid-template-columns: auto minmax(0, 1fr) 150px 90px 150px auto auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.onb-paso input, .onb-paso select { min-height: 34px; padding: 6px 8px; font-size: 13px; }
+.onb-orden { display: flex; flex-direction: column; }
+.onb-orden .link-btn { min-height: 18px; line-height: 1; padding: 0 4px; }
+.onb-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.onb-dias { display: flex; align-items: center; gap: 4px; }
+.onb-dias input { width: 56px; }
+@media (max-width: 900px) {
+  .onb-paso { grid-template-columns: auto 1fr 1fr; }
+  .onb-main { grid-column: 2 / -1; }
+}

@@ -1,9 +1,11 @@
+import logging
 import re
 from decimal import Decimal, InvalidOperation
 
 from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Q, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,9 +13,10 @@ from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, requiere_permiso, tiene_permiso
 from apps.core.utils import add_months, mes_label, money, parse_mes, today
 from apps.equipo.models import AsignacionCliente
+from apps.equipo.serializers import TareaSerializer
 
-from . import services
-from .models import Cliente, Cobro, Contrato
+from . import onboarding, services
+from .models import Cliente, Cobro, Contrato, PasoOnboarding
 from .reportes import rentabilidad_clientes
 from .serializers import (
     AjusteInputSerializer,
@@ -23,6 +26,7 @@ from .serializers import (
     ClienteSerializer,
     CobroSerializer,
     ContratoSerializer,
+    PasoOnboardingSerializer,
     RegistrarPagoSerializer,
 )
 
@@ -60,6 +64,18 @@ def _num(v):
         return None
 
 
+logger = logging.getLogger(__name__)
+
+
+class PasoOnboardingViewSet(viewsets.ModelViewSet):
+    """Plantilla de onboarding de clientes (Configuración → Onboarding)."""
+
+    serializer_class = PasoOnboardingSerializer
+    permission_classes = [IsAdmin]
+    pagination_class = None
+    queryset = PasoOnboarding.objects.all()
+
+
 class ClienteViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
     pagination_class = None
@@ -92,7 +108,37 @@ class ClienteViewSet(viewsets.ModelViewSet):
         ).prefetch_related('contratos__ajustes', 'asignaciones__persona')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        cliente = serializer.save(user=self.request.user)
+        if self.request.data.get('onboarding', True) not in (False, 'false', '0') and PasoOnboarding.objects.filter(activo=True).exists():
+            try:
+                onboarding.iniciar_onboarding(cliente, self.request.data.get('responsables') or None, self.request.user)
+            except Exception:
+                logger.exception('No se pudo iniciar el onboarding del cliente %s', cliente.pk)
+
+    @action(detail=True, methods=['get', 'post'])
+    def onboarding(self, request, pk=None):
+        cliente = self.get_object()
+        if request.method == 'POST':
+            if not es_admin(request.user):
+                raise PermissionDenied('Solo los socios pueden iniciar el onboarding.')
+            try:
+                onboarding.iniciar_onboarding(cliente, request.data.get('responsables') or None, request.user)
+            except onboarding.OnboardingYaIniciado as e:
+                return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            cliente.refresh_from_db()
+        datos = onboarding.progreso(cliente)
+        datos['tareas'] = TareaSerializer(datos['tareas'], many=True, context={'request': request}).data
+        if es_admin(request.user):
+            datos['sugeridos'] = onboarding.responsables_sugeridos(cliente, request.user)
+        return Response(datos)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
+    def drive(self, request, pk=None):
+        cliente = self.get_object()
+        url = onboarding.crear_drive(cliente)
+        if not url:
+            return Response({'detail': 'No se pudo crear la carpeta de Drive. Revisá la conexión de Google en Configuración.'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response({'drive_url': url})
 
     def perform_update(self, serializer):
         from apps.calendario import google_calendar

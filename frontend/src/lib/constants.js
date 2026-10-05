@@ -51,6 +51,8 @@ export function nombreRoles(usuario) {
   return (usuario?.roles ?? []).map((r) => labelDe(ROLES_EQUIPO, r)).join(' + ') || 'Equipo'
 }
 
+export const ROLES_ONBOARDING = [{ value: 'admin', label: 'Socios' }, ...ROLES_EQUIPO.filter((r) => r.value !== 'colaborador').map(({ value, label }) => ({ value, label }))]
+
 export const ESTADOS_TAREA = [
   { value: 'pendiente', label: 'Por hacer', tag: '' },
   { value: 'en_curso', label: 'En progreso', tag: 'purple' },

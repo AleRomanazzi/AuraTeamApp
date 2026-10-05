@@ -66,6 +66,8 @@ class Tarea(models.Model):
     notion_privada = models.BooleanField(default=False)
     etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     recurrente = models.ForeignKey('TareaRecurrente', null=True, blank=True, on_delete=models.SET_NULL, related_name='tareas')
+    paso_onboarding = models.ForeignKey('clientes.PasoOnboarding', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    onboarding = models.BooleanField(default=False)
     # Evento de día completo en el calendario de Google de su etiqueta. Vacío con google_event_id cargado = Historias
     # (antes Operaciones). Si la etiqueta es privada, la página de Notion va a la base de tareas privadas.
     google_event_id = models.CharField(max_length=255, blank=True)

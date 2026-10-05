@@ -9,7 +9,7 @@ import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
 import StatCard from '../components/ui/StatCard'
 import Tag from '../components/ui/Tag'
-import { useCategorias } from '../hooks/useData'
+import { useCategorias, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { PERIODICIDADES, labelDe } from '../lib/constants'
 import { currentMonth, fmt, fmtCorto, monthLabel } from '../lib/format'
@@ -44,6 +44,8 @@ function calcularReparto(metodo, total, filas) {
 function SuscripcionForm({ inicial, onClose }) {
   const qc = useQueryClient()
   const { data: categorias = [] } = useCategorias()
+  const { data: personas = [] } = usePersonas()
+  const activas = personas.filter((p) => p.activo || p.id === inicial?.pagador)
   const [f, setF] = useState(() => ({
     nombre: inicial?.nombre ?? '',
     proveedor: inicial?.proveedor ?? '',
@@ -56,6 +58,8 @@ function SuscripcionForm({ inicial, onClose }) {
     mi_parte: inicial?.mi_parte && num(inicial.mi_parte) > 0 ? inicial.mi_parte : '',
     generar_egreso: inicial?.generar_egreso ?? true,
     activo: inicial?.activo ?? true,
+    pagador: inicial?.pagador ?? '',
+    dias_aviso: inicial?.dias_aviso ?? 3,
   }))
   const [filas, setFilas] = useState(() => (inicial?.detalle?.length ? inicial.detalle.map((d) => ({ ...d })) : [{ nombre: 'Agencia', monto: '', porcentaje: '' }]))
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e?.target ? e.target.value : e }))
@@ -73,7 +77,10 @@ function SuscripcionForm({ inicial, onClose }) {
         categoria: f.categoria || null,
         fecha_pago: f.fecha_pago || null,
         mi_parte: f.mi_parte || '0',
-        detalle: reparto.filter((x) => String(x.nombre).trim()).map((x) => ({ nombre: x.nombre, monto: String(x.monto), ...(f.metodo === 'porcentaje' ? { porcentaje: String(x.porcentaje ?? '') } : {}) })),
+        pagador: f.pagador || null,
+        detalle: reparto
+          .filter((x) => String(x.nombre).trim())
+          .map((x) => ({ nombre: x.nombre, monto: String(x.monto), ...(f.metodo === 'porcentaje' ? { porcentaje: String(x.porcentaje ?? '') } : {}), ...(x.persona ? { persona: Number(x.persona) } : {}) })),
       }
       return inicial?.id ? api.put(`servicios/${inicial.id}/`, body) : api.post('servicios/', body)
     },
@@ -148,6 +155,22 @@ function SuscripcionForm({ inicial, onClose }) {
         </Field>
       </div>
 
+      <div className="grid-2 tight">
+        <Field label="¿Quién lo paga?" hint="Recibe la tarea «Pagar…» unos días antes y los aportes del resto">
+          <select value={f.pagador ?? ''} onChange={set('pagador')}>
+            <option value="">La agencia (avisa a los socios)</option>
+            {activas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Avisar con días de anticipación">
+          <input type="number" min={0} max={20} value={f.dias_aviso} onChange={set('dias_aviso')} />
+        </Field>
+      </div>
+
       <div className="calc-box">
         <div className="items-head">
           <span>¿Se comparte el costo?</span>
@@ -164,6 +187,23 @@ function SuscripcionForm({ inicial, onClose }) {
             {reparto.map((x, i) => (
               <div key={i} className="item-row">
                 <input aria-label="Nombre" placeholder="Nombre" value={x.nombre} onChange={(e) => setFila(i, 'nombre', e.target.value)} />
+                <select
+                  className="select-sm"
+                  aria-label="Persona del equipo"
+                  title="Si es del equipo, recibe la tarea de transferir su parte"
+                  value={x.persona ?? ''}
+                  onChange={(e) => {
+                    const p = activas.find((a) => String(a.id) === e.target.value)
+                    setFilas((arr) => arr.map((y, j) => (j === i ? { ...y, persona: e.target.value, nombre: p && !String(y.nombre).trim() ? p.nombre : y.nombre } : y)))
+                  }}
+                >
+                  <option value="">Sin tarea</option>
+                  {activas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre}
+                    </option>
+                  ))}
+                </select>
                 {f.metodo === 'porcentaje' ? (
                   <input aria-label="Porcentaje" type="number" step="0.01" placeholder="%" value={x.porcentaje ?? ''} onChange={(e) => setFila(i, 'porcentaje', e.target.value)} />
                 ) : null}
@@ -222,6 +262,14 @@ export default function Suscripciones() {
     },
     onError: (e) => notifyError(e),
   })
+  const registrarPago = useMutation({
+    mutationFn: (s) => api.post(`servicios/${s.id}/registrar-pago/`, { mes }).then((r) => r.data),
+    onSuccess: (d, s) => {
+      invalidar(qc, [...DINERO, 'tareas'])
+      notify(d.creado ? `Pago de ${s.nombre} registrado` : `${s.nombre} ya estaba registrado en ${monthLabel(mes)}`)
+    },
+    onError: (e) => notifyError(e),
+  })
   const borrar = useMutation({
     mutationFn: (id) => api.delete(`servicios/${id}/`),
     onSuccess: () => {
@@ -272,6 +320,7 @@ export default function Suscripciones() {
                       <div className="cell-sub">
                         {labelDe(PERIODICIDADES, s.periodicidad)} · día {s.dia_vencimiento}
                         {s.proveedor ? ` · ${s.proveedor}` : ''}
+                        {s.pagador_nombre ? ` · paga ${s.pagador_nombre}` : ''}
                         {s.detalle.length ? ` · compartida (${s.detalle.map((d) => d.nombre).join(', ')})` : ''}
                       </div>
                     </td>
@@ -296,6 +345,13 @@ export default function Suscripciones() {
                       )}
                     </td>
                     <td className="nowrap actions-cell">
+                      {s.activo && s.generar_egreso && !s.pagado_mes ? (
+                        <>
+                          <button type="button" className="btn btn-primary btn-xs" disabled={registrarPago.isPending} onClick={() => registrarPago.mutate(s)} title="Registra el egreso del mes y cierra la tarea de pago">
+                            Registrar pago
+                          </button>{' '}
+                        </>
+                      ) : null}
                       <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(s)}>
                         Editar
                       </button>{' '}

@@ -32,6 +32,7 @@ class MeSerializer(serializers.ModelSerializer):
             'persona',
             'persona_nombre',
             'google_conectado',
+            'notif_email',
         )
 
     google_conectado = serializers.SerializerMethodField()

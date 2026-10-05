@@ -1,0 +1,21 @@
+name: Cron del panel
+
+# Cada hora: recurrentes, tareas de servicios, avisos de deadlines, resumen diario y emails a clientes.
+# Necesita el secret CRON_TOKEN (el mismo valor que la variable CRON_TOKEN en Render).
+on:
+  schedule:
+    - cron: '5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Despertar la API
+        run: curl -fsS --retry 6 --retry-delay 20 --retry-all-errors https://aura-backend-rj63.onrender.com/api/health/ > /dev/null
+      - name: Correr el cron
+        env:
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          curl -fsS --max-time 300 -X POST -H "X-Cron-Token: $CRON_TOKEN" https://aura-backend-rj63.onrender.com/api/cron/

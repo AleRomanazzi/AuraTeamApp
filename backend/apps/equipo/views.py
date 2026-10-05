@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 
 from django.db.models import Q, Sum
@@ -6,11 +7,14 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from apps.core import cron
 from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, tiene_permiso
 from apps.core.utils import money, parse_mes, today
 from apps.calendario import etiquetas, google_calendar
 from apps.integraciones import notion
+from apps.notificaciones import services as avisos
+from apps.servicios.services import al_completar_tarea as servicios_al_completar
 
 from . import services
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea, TareaRecurrente
@@ -26,6 +30,8 @@ from .serializers import (
     TareaSerializer,
     es_tarea_propia,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class PersonaViewSet(viewsets.ModelViewSet):
@@ -89,6 +95,8 @@ class TareaViewSet(viewsets.ModelViewSet):
         qs = Tarea.objects.select_related('cliente').prefetch_related('asignaciones__persona')
         if not es_admin(self.request.user):
             qs = qs.exclude(etiqueta__in=etiquetas.privadas())
+            # Las tareas de pagos y aportes de servicios (con montos) solo las ve su responsable.
+            qs = qs.exclude(Q(aviso_servicio__isnull=False) & ~Q(aviso_servicio__persona=persona_de(self.request.user)))
         p = self.request.query_params
         if p.get('estado') == 'abiertas':
             qs = qs.exclude(estado='hecha')
@@ -104,6 +112,7 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         services.generar_recurrentes()
+        cron.respaldo()
         return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -114,6 +123,7 @@ class TareaViewSet(viewsets.ModelViewSet):
             AsignacionTarea.objects.create(persona=persona, tarea=tarea)
         notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
+        avisos.al_asignar(tarea, list(tarea.asignaciones.values_list('persona_id', flat=True)), user)
 
     def perform_update(self, serializer):
         user, tarea = self.request.user, serializer.instance
@@ -122,9 +132,19 @@ class TareaViewSet(viewsets.ModelViewSet):
             actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
             if {p.id for p in nuevos} != actuales:
                 raise PermissionDenied('Solo quien creó la tarea o un administrador puede cambiar los responsables.')
+        antes = set(tarea.asignaciones.values_list('persona_id', flat=True))
+        estado_anterior = tarea.estado
         tarea = serializer.save()
         notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
+        nuevas = set(tarea.asignaciones.values_list('persona_id', flat=True)) - antes
+        avisos.al_asignar(tarea, list(nuevas), user)
+        avisos.al_cambiar_estado(tarea, estado_anterior, user)
+        if tarea.estado == 'hecha' and estado_anterior != 'hecha':
+            try:
+                servicios_al_completar(tarea, user)
+            except Exception:
+                logger.exception('No se pudo registrar el pago del servicio de la tarea %s', tarea.pk)
 
     @action(detail=False, methods=['post'])
     def plan(self, request):
@@ -138,6 +158,7 @@ class TareaViewSet(viewsets.ModelViewSet):
             if not (tiene_permiso(user, 'plan_tareas') and asignado):
                 raise PermissionDenied('Solo podés armar el plan de tus clientes asignados.')
         creadas = serializer.save()
+        avisos.asignadas_en_tanda(creadas, f'de {cliente.nombre} (plan del mes)', user, email=True)
         return Response({'creadas': len(creadas)}, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):

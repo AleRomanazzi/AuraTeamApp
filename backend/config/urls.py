@@ -19,10 +19,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-from apps.core.views import HealthView
+from apps.core.views import CronView, HealthView
 
 urlpatterns = [
     path('api/health/', HealthView.as_view(), name='health'),
+    path('api/cron/', CronView.as_view(), name='cron'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
     path('api/notion/', include('apps.integraciones.urls')),

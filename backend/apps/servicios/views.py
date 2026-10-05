@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.permissions import IsAdmin
-from apps.core.utils import equivalente_mensual, money, parse_mes
+from apps.core.utils import equivalente_mensual, mes_actual, money, parse_mes
 
 from . import services
 from .models import Servicio
@@ -35,6 +35,12 @@ class ServicioViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='generar-egresos')
     def generar_egresos(self, request):
         return Response(services.generar_egresos(request.data.get('mes') or request.query_params.get('mes'), request.user))
+
+    @action(detail=True, methods=['post'], url_path='registrar-pago')
+    def registrar_pago(self, request, pk=None):
+        mes = request.data.get('mes') or request.query_params.get('mes') or mes_actual()
+        creado = services.registrar_pago(self.get_object(), mes, request.user)
+        return Response({'creado': creado})
 
     @action(detail=False, methods=['get'])
     def resumen(self, request):

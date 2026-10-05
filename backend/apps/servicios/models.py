@@ -36,6 +36,9 @@ class Servicio(models.Model):
     categoria = models.ForeignKey('finanzas.Categoria', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     generar_egreso = models.BooleanField(default=True)
     activo = models.BooleanField(default=True)
+    # Quién lo paga con su tarjeta (vacío = la agencia). Recibe la tarea «Pagar …» y los aportes del resto.
+    pagador = models.ForeignKey('equipo.Persona', null=True, blank=True, on_delete=models.SET_NULL, related_name='servicios_que_paga')
+    dias_aviso = models.PositiveSmallIntegerField(default=3, validators=[MaxValueValidator(20)])
     creado = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -58,4 +61,25 @@ class PagoServicio(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['servicio', 'periodo'], name='unique_pago_servicio_periodo'),
+        ]
+
+
+TIPOS_AVISO = [('pago', 'Pago'), ('aporte', 'Aporte')]
+
+
+class AvisoServicio(models.Model):
+    """Tarea generada para pagar un servicio o aportar la parte de una persona en un período."""
+
+    servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE, related_name='avisos')
+    periodo = models.CharField(max_length=7)
+    persona = models.ForeignKey('equipo.Persona', on_delete=models.CASCADE, related_name='avisos_servicio')
+    tipo = models.CharField(max_length=6, choices=TIPOS_AVISO)
+    monto = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0'))
+    vencimiento = models.DateField()
+    tarea = models.OneToOneField('equipo.Tarea', null=True, blank=True, on_delete=models.SET_NULL, related_name='aviso_servicio')
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['servicio', 'periodo', 'persona', 'tipo'], name='aviso_servicio_unico'),
         ]

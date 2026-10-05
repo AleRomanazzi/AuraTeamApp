@@ -34,7 +34,7 @@ export function useEtiquetas() {
 
 /** Opciones para un select de etiqueta: incluye la actual aunque ya no se ofrezca (oculta o privada). */
 export function opcionesEtiqueta(etiquetas, actual) {
-  return !actual || etiquetas.some((e) => e.value === actual) ? etiquetas : [...etiquetas, { value: actual, label: actual }]
+  return !actual || etiquetas.some((e) => e.value === actual) ? etiquetas : [...etiquetas, { value: actual, label: actual.charAt(0).toUpperCase() + actual.slice(1) }]
 }
 
 export function useCategorias() {

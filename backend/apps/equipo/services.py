@@ -26,6 +26,7 @@ def generar_recurrentes() -> int:
     hasta = fin_de_generacion(hoy)
     pendientes = TareaRecurrente.objects.filter(activa=True).filter(Q(generada_hasta__isnull=True) | Q(generada_hasta__lt=hasta))
     creadas = 0
+    nuevas = []
     for pk in pendientes.values_list('pk', flat=True):
         with transaction.atomic():
             p = TareaRecurrente.objects.select_for_update(of=('self',)).filter(pk=pk, activa=True).order_by().first()
@@ -42,9 +43,14 @@ def generar_recurrentes() -> int:
                             etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
                         )
                         AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=x, tarea=tarea) for x in personas])
+                        nuevas.append(tarea)
                         creadas += 1
                 dia += timedelta(days=1)
             TareaRecurrente.objects.filter(pk=p.pk).update(generada_hasta=hasta)
+    if nuevas:
+        from apps.notificaciones.services import asignadas_en_tanda
+
+        asignadas_en_tanda(nuevas, 'recurrentes')
     return creadas
 
 

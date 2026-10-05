@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import EventoForm from '../components/calendario/EventoForm'
 import CalendarioCliente from '../components/tareas/CalendarioCliente'
@@ -41,7 +42,8 @@ export default function Tareas() {
   const [vista, setVista] = useState('clientes')
   const [filtro, setFiltro] = useState('todas')
   const [busqueda, setBusqueda] = useState('')
-  const [tareaAbierta, setTareaAbierta] = useState(null)
+  const [tareaElegida, setTareaAbierta] = useState(null)
+  const [params, setParams] = useSearchParams()
   const [calendario, setCalendario] = useState(null)
   const [evento, setEvento] = useState(null)
   const [recurrentes, setRecurrentes] = useState(false)
@@ -69,6 +71,15 @@ export default function Tareas() {
     retry: false,
   })
   useSyncCalendario()
+
+  // ?tarea=ID (links de notificaciones) abre esa tarea.
+  const idUrl = Number(params.get('tarea')) || null
+  const deUrl = idUrl ? (q.data ?? []).find((t) => t.id === idUrl) : null
+  const tareaAbierta = tareaElegida ?? (deUrl ? { tarea: deUrl } : null)
+  const cerrarTarea = () => {
+    setTareaAbierta(null)
+    if (idUrl) setParams({}, { replace: true })
+  }
 
   const cambiarEstado = useMutation({
     mutationFn: ({ id, estado }) => api.patch(`tareas/${id}/`, { estado }),
@@ -257,7 +268,7 @@ export default function Tareas() {
       ) : evento ? (
         <EventoForm inicial={evento.inicial} dia={evento.dia} cliente={evento.cliente?.id ? evento.cliente : null} onClose={() => setEvento(null)} />
       ) : tareaAbierta ? (
-        <TareaSheet tarea={tareaAbierta.tarea} cliente={tareaAbierta.cliente} onClose={() => setTareaAbierta(null)} />
+        <TareaSheet tarea={tareaAbierta.tarea} cliente={tareaAbierta.cliente} onClose={cerrarTarea} />
       ) : calendario ? (
         <CalendarioCliente
           key={`${calendario.cliente.id ?? 'interno'}-${calendario.dia}`}

@@ -5,6 +5,7 @@ import AURA_LOGO from '../../assets/logo-aura.png'
 import { isSignedIn } from '../../features/google/gapiClient'
 import { useGoogleStore } from '../../features/google/googleStore'
 import { useMe } from '../../hooks/useData'
+import Campana from './Campana'
 import { cerrarSesion } from '../../lib/session'
 
 const hoy = new Date().toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -42,6 +43,7 @@ export default function Topbar({ onToggleSidebar }) {
             <span className="solo-escritorio"> {googleActivo ? 'Google conectado' : 'Google sin sesión'}</span>
           </span>
         ) : null}
+        {me ? <Campana /> : null}
         <button type="button" className="btn btn-secondary btn-sm" onClick={salir} disabled={saliendo}>
           {saliendo ? 'Saliendo…' : 'Salir'}
         </button>

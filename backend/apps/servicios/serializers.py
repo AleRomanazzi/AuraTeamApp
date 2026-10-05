@@ -4,6 +4,8 @@ from rest_framework import serializers
 
 from apps.core.utils import equivalente_mensual, mes_actual, money
 
+from apps.equipo.models import Persona
+
 from .models import Servicio
 
 
@@ -12,13 +14,14 @@ class ServicioSerializer(serializers.ModelSerializer):
     monto_agencia = serializers.DecimalField(max_digits=14, decimal_places=2, read_only=True)
     equivalente_mensual = serializers.SerializerMethodField()
     pagado_mes = serializers.SerializerMethodField()
+    pagador_nombre = serializers.CharField(source='pagador.nombre', read_only=True, default=None)
 
     class Meta:
         model = Servicio
         fields = (
             'id', 'nombre', 'proveedor', 'monto_total', 'periodicidad', 'dia_vencimiento', 'metodo', 'detalle',
             'mi_parte', 'monto_agencia', 'equivalente_mensual', 'fecha_pago', 'categoria', 'categoria_nombre',
-            'generar_egreso', 'activo', 'pagado_mes', 'creado',
+            'generar_egreso', 'activo', 'pagado_mes', 'pagador', 'pagador_nombre', 'dias_aviso', 'creado',
         )
         read_only_fields = ('id', 'creado')
 
@@ -45,6 +48,12 @@ class ServicioSerializer(serializers.ModelSerializer):
             fila = {'nombre': str(item['nombre']).strip()[:80], 'monto': str(monto)}
             if item.get('porcentaje') not in (None, ''):
                 fila['porcentaje'] = str(item['porcentaje'])
+            if item.get('persona') not in (None, ''):
+                try:
+                    persona = Persona.objects.get(pk=int(item['persona']))
+                except (Persona.DoesNotExist, TypeError, ValueError):
+                    raise serializers.ValidationError(f'Fila {i + 1}: persona inválida.')
+                fila['persona'] = persona.pk
             limpio.append(fila)
         return limpio
 

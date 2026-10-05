@@ -13,6 +13,7 @@ from apps.calendario.views import (
 )
 from apps.clientes.views import ClienteViewSet, CobroViewSet, ContratoViewSet, RentabilidadView
 from apps.equipo.views import AsignacionClienteViewSet, LiquidacionViewSet, PersonaViewSet, TareaRecurrenteViewSet, TareaViewSet
+from apps.notificaciones.views import NotificacionViewSet
 from apps.finanzas.views import AdjuntoViewSet, CategoriaViewSet, TransaccionViewSet
 from apps.servicios.views import ServicioViewSet
 from apps.stats.views import AnalisisStatsViewSet, ImagenAnalisisViewSet
@@ -36,6 +37,7 @@ router.register('cal-eventos', EventoUnicoViewSet, basename='cal-evento')
 router.register('stats', AnalisisStatsViewSet, basename='stats')
 router.register('stats-imagenes', ImagenAnalisisViewSet, basename='stats-imagen')
 router.register('usuarios', UsuarioViewSet, basename='usuario')
+router.register('notificaciones', NotificacionViewSet, basename='notificacion')
 
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='api-dashboard'),

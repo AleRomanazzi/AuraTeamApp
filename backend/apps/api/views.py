@@ -182,7 +182,10 @@ class MiPanelView(APIView):
         from apps.equipo.serializers import LiquidacionSerializer, TareaSerializer
         from apps.equipo.services import generar_recurrentes
 
+        from apps.core import cron
+
         generar_recurrentes()
+        cron.respaldo()
         persona = request.user.persona
         hoy = today()
         tareas = Tarea.objects.none()

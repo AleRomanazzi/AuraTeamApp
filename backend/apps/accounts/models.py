@@ -27,6 +27,7 @@ class User(AbstractUser):
     persona = models.OneToOneField(
         'equipo.Persona', null=True, blank=True, on_delete=models.SET_NULL, related_name='usuario'
     )
+    notif_email = models.BooleanField(default=True)
 
     @property
     def es_admin(self) -> bool:

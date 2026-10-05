@@ -25,6 +25,8 @@ services:
         sync: false
       - key: NOTION_TOKEN
         sync: false
+      - key: CRON_TOKEN
+        sync: false
       - key: AI_PROVIDER
         sync: false
       - key: AI_API_KEY

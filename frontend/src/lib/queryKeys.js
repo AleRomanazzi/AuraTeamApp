@@ -31,11 +31,12 @@ export const QK = {
   etiquetas: ['cal-google', 'etiquetas'],
   notionEstado: ['notion', 'estado'],
   notionUsuarios: ['notion', 'usuarios'],
+  notificaciones: ['notificaciones'],
 }
 
 /** Grupos de datos que se ven afectados por un movimiento de dinero. */
 export const DINERO = ['dashboard', 'transacciones', 'cobros', 'liquidaciones', 'clientes', 'rentabilidad', 'servicios', 'vencimientos', 'mi-panel']
-export const TAREAS = ['tareas', 'dashboard', 'mi-panel', 'vencimientos']
+export const TAREAS = ['tareas', 'dashboard', 'mi-panel', 'vencimientos', 'notificaciones', 'seguimiento']
 
 export function invalidar(qc, grupos) {
   return Promise.all(grupos.map((g) => qc.invalidateQueries({ queryKey: [g] })))

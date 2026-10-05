@@ -21,7 +21,7 @@ import { confirmar } from '../store/confirmStore'
 
 function Perfil({ me }) {
   const qc = useQueryClient()
-  const [f, setF] = useState({ first_name: me.first_name || '', last_name: me.last_name || '', email: me.email || '', nombre_display: me.nombre_display || '' })
+  const [f, setF] = useState({ first_name: me.first_name || '', last_name: me.last_name || '', email: me.email || '', nombre_display: me.nombre_display || '', notif_email: me.notif_email ?? true })
   const [pw, setPw] = useState({ actual: '', nueva: '', repetir: '' })
   const guardar = useMutation({
     mutationFn: () => api.put('me/config/', f),
@@ -65,6 +65,10 @@ function Perfil({ me }) {
         <Field label="Nombre visible en el panel">
           <input value={f.nombre_display} onChange={(e) => setF((s) => ({ ...s, nombre_display: e.target.value }))} />
         </Field>
+        <label className="check-row">
+          <input type="checkbox" checked={f.notif_email} onChange={(e) => setF((s) => ({ ...s, notif_email: e.target.checked }))} />
+          Recibir por email las tareas nuevas y el resumen diario
+        </label>
         <div className="small muted" style={{ marginBottom: 12 }}>
           Usuario: <strong>{me.username}</strong> · Rol: <strong>{nombreRoles(me)}</strong>
           {me.persona_nombre ? ` · Vinculado a ${me.persona_nombre}` : ''}

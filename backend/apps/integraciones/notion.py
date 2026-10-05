@@ -269,9 +269,14 @@ def _seguro(fn, *args):
         registrar_error('Error inesperado sincronizando con Notion (ver logs del servidor).')
 
 
+def _es_de_servicio(tarea: Tarea) -> bool:
+    # Pagos y aportes de servicios llevan montos: el dinero vive solo en el panel, no van a Notion.
+    return Tarea.objects.filter(pk=tarea.pk, aviso_servicio__isnull=False).exists()
+
+
 def al_guardar_tarea(tarea: Tarea):
     """Se llama desde la API del panel; un fallo de Notion nunca debe impedir guardar la tarea."""
-    if configurado():
+    if configurado() and not _es_de_servicio(tarea):
         _seguro(enviar_tarea, tarea)
 
 
@@ -326,6 +331,7 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
         tarea = Tarea()
         resultado = 'creada'
 
+    anterior = tarea.estado if tarea.pk else None
     with transaction.atomic():
         if datos['estado'] == 'hecha' and tarea.estado != 'hecha':
             tarea.completada_en = timezone.now()
@@ -354,6 +360,10 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
         tarea.notion_huella = huella
         tarea.save()
         _aplicar_responsables(tarea, datos['personas'])
+    if anterior and anterior != tarea.estado:
+        from apps.notificaciones.services import al_cambiar_estado
+
+        transaction.on_commit(lambda: al_cambiar_estado(tarea, anterior))
     return resultado
 
 
@@ -366,6 +376,10 @@ def _aplicar_responsables(tarea: Tarea, uids):
     actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
     for pid in deseadas - actuales:
         AsignacionTarea.objects.create(persona_id=pid, tarea=tarea)
+    if deseadas - actuales:
+        from apps.notificaciones.services import al_asignar
+
+        transaction.on_commit(lambda: al_asignar(tarea, list(deseadas - actuales)))
 
 
 def procesar_evento(evento: dict):
@@ -430,7 +444,7 @@ def vincular_clientes() -> dict:
 
 def _sin_pagina(sin_privadas=False):
     limite = timezone.now() - timedelta(days=DIAS_HECHAS_A_ENVIAR)
-    qs = Tarea.objects.filter(notion_page_id__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
+    qs = Tarea.objects.filter(notion_page_id__isnull=True, aviso_servicio__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
     if sin_privadas or not settings.NOTION_TAREAS_PRIVADAS_DS:
         qs = qs.exclude(etiqueta__in=etiquetas_privadas())
     return qs

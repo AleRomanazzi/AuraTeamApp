@@ -82,7 +82,7 @@ def iniciar_onboarding(cliente: Cliente, responsables=None, user=None) -> list:
 
 
 def crear_drive(cliente: Cliente, tarea: Tarea | None = None) -> str:
-    """Crea la carpeta de Drive del cliente y cierra la tarea del paso. Si Google falla, la tarea queda para hacerla a mano."""
+    """Vincula o crea la carpeta de Drive del cliente y cierra la tarea del paso. Si Google falla, la tarea queda manual."""
     from apps.integraciones import drive
 
     try:
@@ -93,12 +93,16 @@ def crear_drive(cliente: Cliente, tarea: Tarea | None = None) -> str:
             nota = f'No se pudo crear sola ({e}). Creala a mano y pegá el link.'
             Tarea.objects.filter(pk=tarea.pk).update(descripcion=f'{tarea.descripcion}\n\n{nota}'.strip())
         return ''
+    cerrar_paso_drive(cliente, url, tarea)
+    return url
+
+
+def cerrar_paso_drive(cliente: Cliente, url: str, tarea: Tarea | None = None) -> None:
     tarea = tarea or Tarea.objects.filter(cliente=cliente, onboarding=True, paso_onboarding__accion='drive').exclude(estado='hecha').first()
     if tarea is not None:
         links = [*(tarea.links or []), {'titulo': 'Carpeta de Drive', 'url': url}]
         Tarea.objects.filter(pk=tarea.pk).update(estado='hecha', completada_en=timezone.now(), links=links)
         tarea.estado = 'hecha'
-    return url
 
 
 def progreso(cliente: Cliente) -> dict:

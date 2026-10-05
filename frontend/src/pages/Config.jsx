@@ -131,6 +131,36 @@ function useResultadoGoogle() {
   }, [resultado, motivo, qc, setSp])
 }
 
+function DriveClientes() {
+  const qc = useQueryClient()
+  const [resultado, setResultado] = useState(null)
+  const vincular = useMutation({
+    mutationFn: () => api.post('clientes/vincular-drive/').then((r) => r.data),
+    onSuccess: (data) => {
+      setResultado(data)
+      qc.invalidateQueries({ queryKey: ['clientes'] })
+      notify(`${data.vinculados.length} cliente${data.vinculados.length === 1 ? '' : 's'} vinculado${data.vinculados.length === 1 ? '' : 's'}`)
+    },
+    onError: (e) => notifyError(e, 'No se pudieron vincular las carpetas'),
+  })
+  return (
+    <div className="info-box" style={{ marginTop: 8 }}>
+      <div>
+        📁 Drive: las carpetas de los clientes viven en Mi unidad → CLIENTES. Este botón busca la de cada cliente sin carpeta por su nombre o razón social y la vincula; nunca crea carpetas.
+      </div>
+      <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} disabled={vincular.isPending} onClick={() => vincular.mutate()}>
+        {vincular.isPending ? 'Buscando…' : 'Vincular carpetas existentes'}
+      </button>
+      {resultado ? (
+        <p className="small" style={{ marginTop: 8 }}>
+          {resultado.vinculados.length ? `Vinculados: ${resultado.vinculados.join(', ')}. ` : 'No había carpetas nuevas para vincular. '}
+          {resultado.sin_carpeta.length ? `Sin carpeta con el mismo nombre (pegá el link desde la ficha): ${resultado.sin_carpeta.join(', ')}.` : ''}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function Google({ me }) {
   const qc = useQueryClient()
   useResultadoGoogle()
@@ -181,9 +211,9 @@ function Google({ me }) {
                 <div className="info-box">
                   La cuenta queda conectada de forma permanente para todo el panel: no hace falta volver a iniciar sesión en Google en cada navegador ni al entrar.
                 </div>
-                {!estado.drive && me.es_admin ? (
+                {me.es_admin ? estado.drive ? <DriveClientes /> : (
                   <div className="info-box down" style={{ marginTop: 8 }}>
-                    Falta el permiso de Google Drive para crear solas las carpetas de los clientes: tocá «Cambiar o reconectar cuenta» y aceptá los permisos (una sola vez).
+                    Falta el permiso de Google Drive para vincular las carpetas de los clientes (Mi unidad → CLIENTES): tocá «Cambiar o reconectar cuenta» y aceptá los permisos (una sola vez).
                   </div>
                 ) : null}
               </>

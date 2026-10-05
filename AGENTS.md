@@ -38,8 +38,10 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
  Todo el equipo ve todas las tareas y edita las suyas; los eventos del calendario solo los edita quien los creó.
   - `clientes`: Cliente, Contrato, Cobro (generación de cobros, registrar pago, ajustes de precio).
     Onboarding (`onboarding.py`): al crear un cliente, los `PasoOnboarding` activos (plantilla en Configuración →
-    Onboarding) se vuelven tareas `onboarding=True` asignadas por rol; el paso `accion='drive'` crea
-    `AuraTeam/Clientes/{nombre}` en Drive (`integraciones/drive.py`, scope `drive.file`) y si falla queda manual.
+    Onboarding) se vuelven tareas `onboarding=True` asignadas por rol; el paso `accion='drive'` vincula
+    la carpeta del cliente en `Mi unidad/CLIENTES` (`integraciones/drive.py`, scope `drive` completo): busca por nombre o
+    razón social y solo crea si no existe; CLIENTES nunca se crea (`DRIVE_CARPETA_CLIENTES` fija su id). Si falla queda
+    manual (pegar el link en la ficha). «Vincular carpetas existentes» (Configuración → Google) nunca crea.
     Emails a clientes (`envios.py`, registro en `EnvioCliente`): reporte del mes anterior como borrador el día
     `ConfigEnvios.dia_reporte` (sin datos de dinero, `reporte_cliente.py`; `Cliente.reporte_auto` lo manda solo) y
     recordatorios de cobro por etapas (antes, el día, +N días) para clientes con `recordatorios_cobro`.

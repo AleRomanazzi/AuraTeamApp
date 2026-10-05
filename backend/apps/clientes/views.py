@@ -9,11 +9,13 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.google import GoogleError
 from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, requiere_permiso, tiene_permiso
 from apps.core.utils import add_months, mes_label, money, parse_mes, today
 from apps.equipo.models import AsignacionCliente
 from apps.equipo.serializers import TareaSerializer
+from apps.integraciones import drive
 
 from . import envios, onboarding, services
 from .models import Cliente, Cobro, ConfigEnvios, Contrato, EnvioCliente, PasoOnboarding
@@ -144,11 +146,30 @@ class ClienteViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def drive(self, request, pk=None):
+        """Con `link` vincula esa carpeta (vacío la desvincula); sin `link` busca la del cliente en CLIENTES o la crea."""
         cliente = self.get_object()
-        url = onboarding.crear_drive(cliente)
-        if not url:
-            return Response({'detail': 'No se pudo crear la carpeta de Drive. Revisá la conexión de Google en Configuración.'}, status=status.HTTP_502_BAD_GATEWAY)
+        if 'link' in request.data:
+            link = (request.data.get('link') or '').strip()
+            carpeta = drive.id_de_link(link)
+            if link and not carpeta:
+                return Response({'detail': 'No reconozco ese link de Drive: copiá el de la carpeta del cliente.'}, status=status.HTTP_400_BAD_REQUEST)
+            url = drive.vincular(cliente, carpeta)
+        else:
+            try:
+                url = drive.crear_carpeta_cliente(cliente)
+            except GoogleError as e:
+                return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        if url:
+            onboarding.cerrar_paso_drive(cliente, url)
         return Response({'drive_url': url})
+
+    @action(detail=False, methods=['post'], url_path='vincular-drive', permission_classes=[IsAdmin])
+    def vincular_drive(self, request):
+        """Vincula a los clientes sin carpeta la que ya tienen dentro de CLIENTES, por nombre. No crea ninguna."""
+        try:
+            return Response(drive.vincular_existentes(Cliente.objects.filter(drive_folder_id='').order_by('nombre')))
+        except GoogleError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 
     def perform_update(self, serializer):
         from apps.calendario import google_calendar

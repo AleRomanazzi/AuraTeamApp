@@ -111,21 +111,71 @@ def test_plantilla_editable_solo_por_admins(api_client, equipo_client):
     assert r.status_code == 201, r.data
 
 
-@pytest.mark.django_db
-def test_drive_crea_la_estructura(monkeypatch, settings):
-    from apps.accounts import google
+@pytest.fixture
+def drive_falso(monkeypatch, settings):
+    """Mi unidad con CLIENTES → «Café Roma» y «Lumen Estudio»."""
+    from apps.accounts.models import CuentaGoogle
 
     settings.GOOGLE_CALENDAR_SOLO_LECTURA = False
-    monkeypatch.setattr(google, 'access_token', lambda: {'access_token': 'x'})
-    llamadas = []
+    settings.DRIVE_CARPETA_CLIENTES = ''
+    CuentaGoogle.objects.create(email='agencia@x.com', refresh_token='x', scopes=f'https://www.googleapis.com/auth/calendar {drive.SCOPE}')
+    arbol = {'root': [{'id': 'raiz', 'name': 'Clientes'}, {'id': 'otra', 'name': 'Varios'}], 'raiz': [{'id': 'c1', 'name': 'Café Roma'}, {'id': 'c2', 'name': 'LUMEN  estudio'}]}
+    creadas = []
 
     def request(method, params=None, body=None):
-        llamadas.append((method, body and body['name']))
-        return {'files': []} if method == 'GET' else {'id': f'id-{len(llamadas)}'}
+        if method == 'GET':
+            padre = params['q'].split("'")[-2]
+            return {'files': arbol.get(padre, [])}
+        creadas.append((body['name'], body['parents']))
+        return {'id': 'nueva'}
 
     monkeypatch.setattr(drive, '_request', request)
-    cliente = Cliente.objects.create(nombre='Lumen')
-    url = drive.crear_carpeta_cliente(cliente)
-    creadas = [n for m, n in llamadas if m == 'POST']
-    assert creadas == ['AuraTeam', 'Clientes', 'Lumen', 'Brief', 'Material crudo', 'Ediciones', 'Diseños', 'Reportes']
-    assert url.startswith('https://drive.google.com/drive/folders/id-')
+    return creadas
+
+
+@pytest.mark.django_db
+def test_drive_vincula_la_carpeta_existente_sin_crear(drive_falso):
+    cliente = Cliente.objects.create(nombre='Cafe roma')
+    assert drive.crear_carpeta_cliente(cliente).endswith('/c1')
+    assert drive_falso == []
+
+
+@pytest.mark.django_db
+def test_drive_crea_dentro_de_clientes_si_no_existe(drive_falso):
+    cliente = Cliente.objects.create(nombre='Nuevo Bar')
+    assert drive.crear_carpeta_cliente(cliente).endswith('/nueva')
+    assert drive_falso == [('Nuevo Bar', ['raiz'])]
+
+
+@pytest.mark.django_db
+def test_drive_sin_permiso_completo_no_crea_nada(drive_falso):
+    from apps.accounts.models import CuentaGoogle
+
+    CuentaGoogle.objects.update(scopes='https://www.googleapis.com/auth/drive.file')
+    with pytest.raises(GoogleError):
+        drive.crear_carpeta_cliente(Cliente.objects.create(nombre='Nuevo Bar'))
+    assert drive_falso == []
+
+
+@pytest.mark.django_db
+def test_vincular_drive_masivo_nunca_crea(api_client, drive_falso):
+    Cliente.objects.create(nombre='Café Roma')
+    Cliente.objects.create(nombre='Lumen', razon_social='Lumen Estudio')
+    Cliente.objects.create(nombre='Sin carpeta')
+    r = api_client.post('/api/clientes/vincular-drive/')
+    assert r.status_code == 200, r.data
+    assert r.data == {'vinculados': ['Café Roma', 'Lumen'], 'sin_carpeta': ['Sin carpeta']}
+    assert drive_falso == []
+    assert Cliente.objects.get(nombre='Lumen').drive_folder_id == 'c2'
+
+
+@pytest.mark.django_db
+def test_pegar_link_de_carpeta_cierra_el_paso(api_client, drive_falla):
+    r = api_client.post('/api/clientes/', {'nombre': 'Café Roma'}, format='json')
+    cid = r.data['id']
+    link = 'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMn?usp=sharing'
+    r = api_client.post(f'/api/clientes/{cid}/drive/', {'link': link}, format='json')
+    assert r.status_code == 200 and r.data['drive_url'].endswith('/1AbCdEfGhIjKlMn')
+    assert Tarea.objects.get(cliente_id=cid, paso_onboarding__accion='drive').estado == 'hecha'
+    assert api_client.post(f'/api/clientes/{cid}/drive/', {'link': 'cualquier cosa'}, format='json').status_code == 400
+    assert api_client.post(f'/api/clientes/{cid}/drive/', {'link': ''}, format='json').data['drive_url'] == ''

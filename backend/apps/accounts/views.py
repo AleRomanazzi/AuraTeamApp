@@ -12,6 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.core.permissions import IsAdmin
+from apps.integraciones import drive
 
 from . import google
 from .serializers import CambiarPasswordSerializer, MeSerializer, UsuarioSerializer
@@ -70,7 +71,7 @@ class GoogleEstadoView(APIView):
                 'conectado': c is not None,
                 'email': c.email if c else None,
                 'conectada_en': c.conectada_en if c else None,
-                'drive': bool(c and 'drive.file' in c.scopes),
+                'drive': drive.tiene_permiso(),
                 'cuenta_sugerida': settings.AURA_GOOGLE_LOGIN_HINT or None,
             }
         )

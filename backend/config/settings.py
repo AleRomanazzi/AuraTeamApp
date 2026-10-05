@@ -25,6 +25,8 @@ AURA_GOOGLE_LOGIN_HINT = os.getenv("AURA_GOOGLE_LOGIN_HINT", "").strip()
 AURA_GOOGLE_TOKEN_KEY = os.getenv("AURA_GOOGLE_TOKEN_KEY", "").strip()
 # Para probar en local contra la cuenta real sin escribir en sus calendarios.
 GOOGLE_CALENDAR_SOLO_LECTURA = os.getenv("GOOGLE_CALENDAR_SOLO_LECTURA", "").strip().lower() in ("1", "true", "si")
+# Id de la carpeta de Drive donde viven las de los clientes; si falta se busca «CLIENTES» en Mi unidad.
+DRIVE_CARPETA_CLIENTES = os.getenv("DRIVE_CARPETA_CLIENTES", "").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
 
 # Notion (integración interna del workspace AuraTeam). Los IDs son de las fuentes de datos (data sources) de las

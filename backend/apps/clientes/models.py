@@ -83,7 +83,7 @@ ROLES_ONBOARDING = [
     ('disenio', 'Diseño'),
     ('foto', 'Fotografía / Filmmaker'),
 ]
-ACCIONES_ONBOARDING = [('', 'Tarea'), ('drive', 'Crear la carpeta de Drive')]
+ACCIONES_ONBOARDING = [('', 'Tarea'), ('drive', 'Vincular la carpeta de Drive')]
 
 
 class PasoOnboarding(models.Model):

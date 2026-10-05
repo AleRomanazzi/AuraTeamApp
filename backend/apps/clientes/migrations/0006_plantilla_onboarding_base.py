@@ -1,7 +1,7 @@
 from django.db import migrations
 
 PASOS = [
-    ('Crear la carpeta de Drive del cliente', 'Con subcarpetas Brief, Material crudo, Ediciones, Diseños y Reportes.', 'admin', 0, 'reuniones', 'drive'),
+    ('Carpeta de Drive del cliente', 'En Mi unidad → CLIENTES. Si ya existe una con su nombre se vincula; si no, se crea.', 'admin', 0, 'reuniones', 'drive'),
     ('Pedir accesos a las cuentas', 'Instagram / Meta Business Suite, Facebook, TikTok y Google Business.', 'cm', 1, 'reuniones', ''),
     ('Brief de marca', 'Objetivos, público, tono, referencias, competencia y material de marca (logos, paleta, tipografías).', 'cm', 3, 'reuniones', ''),
     ('Reunión inicial con el cliente', 'Presentación del equipo, revisión del brief y acuerdo de canales y tiempos de aprobación.', 'admin', 3, 'reuniones', ''),

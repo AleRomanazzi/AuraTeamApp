@@ -22,6 +22,7 @@ const NAV_ADMIN = [
   {
     section: 'Equipo',
     items: [
+      { to: '/equipo-hoy', icon: '🚦', label: 'Equipo hoy' },
       { to: '/equipo', icon: '👥', label: 'Equipo' },
       { to: '/pagos-equipo', icon: '🧾', label: 'Pagos al equipo' },
       { to: '/tareas', icon: '✅', label: 'Tareas' },

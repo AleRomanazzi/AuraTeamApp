@@ -15,6 +15,7 @@ const Clientes = lazy(() => import('./pages/Clientes'))
 const Cobros = lazy(() => import('./pages/Cobros'))
 const Config = lazy(() => import('./pages/Config'))
 const Equipo = lazy(() => import('./pages/Equipo'))
+const EquipoHoy = lazy(() => import('./pages/EquipoHoy'))
 const Estadisticas = lazy(() => import('./pages/Estadisticas'))
 const Gmail = lazy(() => import('./pages/Gmail'))
 const Movimientos = lazy(() => import('./pages/Movimientos'))
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
       { path: 'movimientos', element: admin(<Movimientos />) },
       { path: 'suscripciones', element: admin(<Suscripciones />) },
       { path: 'equipo', element: admin(<Equipo />) },
+      { path: 'equipo-hoy', element: admin(<EquipoHoy />) },
       { path: 'pagos-equipo', element: admin(<PagosEquipo />) },
       { path: 'gmail', element: admin(<Gmail />) },
       { path: 'estadisticas', element: conPermiso('estadisticas', <Estadisticas />) },

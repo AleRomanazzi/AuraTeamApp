@@ -12,7 +12,14 @@ from apps.calendario.views import (
     VencimientosView,
 )
 from apps.clientes.views import ClienteViewSet, CobroViewSet, ContratoViewSet, RentabilidadView
-from apps.equipo.views import AsignacionClienteViewSet, LiquidacionViewSet, PersonaViewSet, TareaRecurrenteViewSet, TareaViewSet
+from apps.equipo.views import (
+    AsignacionClienteViewSet,
+    LiquidacionViewSet,
+    PersonaViewSet,
+    SeguimientoView,
+    TareaRecurrenteViewSet,
+    TareaViewSet,
+)
 from apps.notificaciones.views import NotificacionViewSet
 from apps.finanzas.views import AdjuntoViewSet, CategoriaViewSet, TransaccionViewSet
 from apps.servicios.views import ServicioViewSet
@@ -41,6 +48,7 @@ router.register('notificaciones', NotificacionViewSet, basename='notificacion')
 
 urlpatterns = [
     path('dashboard/', DashboardView.as_view(), name='api-dashboard'),
+    path('equipo/seguimiento/', SeguimientoView.as_view(), name='api-seguimiento'),
     path('mi-panel/', MiPanelView.as_view(), name='api-mi-panel'),
     path('rentabilidad/', RentabilidadView.as_view(), name='api-rentabilidad'),
     path('calendario/vencimientos/', VencimientosView.as_view(), name='api-vencimientos'),

@@ -32,6 +32,7 @@ export const QK = {
   notionEstado: ['notion', 'estado'],
   notionUsuarios: ['notion', 'usuarios'],
   notificaciones: ['notificaciones'],
+  seguimiento: (fecha, rol) => ['seguimiento', fecha, rol],
 }
 
 /** Grupos de datos que se ven afectados por un movimiento de dinero. */

@@ -599,3 +599,33 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .campana-cuerpo { font-size: 12px; }
 .campana-fecha { font-size: 11px; color: var(--text-dim); }
 @media (max-width: 640px) { .campana-panel { position: fixed; right: 12px; left: 12px; width: auto; top: 64px; } }
+
+/* ===== Equipo hoy ===== */
+.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; align-items: start; }
+.seg-card { display: flex; flex-direction: column; gap: 10px; }
+.seg-head { display: flex; align-items: center; gap: 10px; }
+.seg-head-main { flex: 1; min-width: 0; }
+.seg-conteos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; }
+.seg-conteos > div { background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 4px; display: flex; flex-direction: column; gap: 2px; }
+.seg-conteos strong { font-size: 18px; font-family: var(--font-mono); }
+.seg-conteos span { font-size: 11px; color: var(--text-muted); }
+.seg-conteos .down strong { color: var(--accent3); }
+.seg-conteos .up strong { color: var(--success); }
+.seg-cumplimiento { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); }
+.seg-toggle { align-self: flex-start; font-size: 13px; }
+.seg-tareas { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+.seg-tarea { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.seg-tarea-main { min-width: 0; }
+.seg-tarea-titulo { color: var(--text); font-size: 13px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg-tarea-titulo.tachada { text-decoration: line-through; color: var(--text-dim); }
+.seg-tarea .select-sm { max-width: 120px; font-size: 12px; }
+@media (max-width: 720px) {
+  .seg-grid { grid-template-columns: 1fr; }
+  .seg-conteos { grid-template-columns: repeat(3, 1fr); }
+  .seg-tarea { grid-template-columns: 1fr 1fr; }
+  .seg-tarea-main { grid-column: 1 / -1; }
+  .seg-tarea .select-sm { max-width: none; }
+}
+.equipo-hoy-mini { display: flex; flex-wrap: wrap; gap: 8px; }
+.equipo-hoy-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: var(--surface2); color: var(--text); font-size: 13px; text-decoration: none; }
+.equipo-hoy-chip:hover { background: var(--surface3); }

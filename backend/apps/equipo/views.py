@@ -6,6 +6,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.core import cron
 from apps.core.csv_utils import csv_response, monto_es
@@ -318,3 +319,41 @@ def tareas_proximas(persona=None, dias=7):
     if persona is not None:
         qs = qs.filter(asignaciones__persona=persona).exclude(etiqueta__in=etiquetas.privadas())
     return qs.select_related('cliente').distinct()
+
+
+class SeguimientoView(APIView):
+    """«Equipo hoy»: tablero de cumplimiento por persona para los admins."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from datetime import date
+
+        from .seguimiento import seguimiento
+
+        try:
+            fecha = date.fromisoformat(request.query_params['fecha']) if request.query_params.get('fecha') else today()
+        except ValueError:
+            return Response({'detail': 'Fecha inválida.'}, status=status.HTTP_400_BAD_REQUEST)
+        filas = seguimiento(fecha, request.query_params.get('rol') or None)
+        ctx = {'request': request}
+        personas = [
+            {
+                'id': f['persona'].id,
+                'nombre': f['persona'].nombre,
+                'color': f['persona'].color,
+                'roles': f['persona'].usuario.roles or [],
+                'es_admin': f['persona'].usuario.es_admin,
+                'conteos': f['conteos'],
+                'semaforo': f['semaforo'],
+                'cumplimiento_7': f['cumplimiento_7'],
+                'cumplimiento_30': f['cumplimiento_30'],
+                'tareas': TareaSerializer(f['tareas'], many=True, context=ctx).data,
+            }
+            for f in filas
+        ]
+        totales = {k: sum(p['conteos'][k] for p in personas) for k in ('vencidas', 'hoy', 'en_revision', 'bloqueadas', 'hechas_hoy')}
+        valores = [p['cumplimiento_7'] for p in personas if p['cumplimiento_7'] is not None]
+        totales['cumplimiento_7'] = round(sum(valores) / len(valores)) if valores else None
+        totales['en_rojo'] = sum(1 for p in personas if p['semaforo'] == 'rojo')
+        return Response({'fecha': fecha, 'totales': totales, 'personas': personas, 'onboarding_atrasado': []})

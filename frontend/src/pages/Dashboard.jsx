@@ -9,7 +9,7 @@ import QueryState from '../components/ui/QueryState'
 import StatCard from '../components/ui/StatCard'
 import Tag from '../components/ui/Tag'
 import { api } from '../lib/api'
-import { currentMonth, diasHasta, fmt, fmtCorto, formatFechaCorta, monthLabel } from '../lib/format'
+import { currentMonth, diasHasta, fmt, fmtCorto, formatFechaCorta, monthLabel, todayISO } from '../lib/format'
 import { QK } from '../lib/queryKeys'
 
 function Proximos({ items }) {
@@ -33,6 +33,35 @@ function Proximos({ items }) {
       </div>
     )
   })
+}
+
+function EquipoHoyCard() {
+  const hoy = todayISO()
+  const q = useQuery({ queryKey: QK.seguimiento(hoy, ''), queryFn: () => api.get('equipo/seguimiento/', { params: { fecha: hoy } }).then((r) => r.data) })
+  if (!q.data) return null
+  const { totales, personas } = q.data
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-title">
+        <span className="dot" style={{ background: totales.en_rojo ? 'var(--accent3)' : 'var(--success)' }} /> Equipo hoy
+        <Link to="/equipo-hoy" className="small" style={{ marginLeft: 'auto' }}>
+          Ver tablero
+        </Link>
+      </div>
+      <div className="muted small" style={{ marginBottom: 8 }}>
+        {totales.vencidas} vencidas · {totales.hoy} para hoy · {totales.en_revision} en revisión · {totales.hechas_hoy} hechas hoy
+        {totales.cumplimiento_7 !== null ? ` · cumplimiento 7 días ${totales.cumplimiento_7}%` : ''}
+      </div>
+      <div className="equipo-hoy-mini">
+        {personas.map((p) => (
+          <Link key={p.id} to="/equipo-hoy" className="equipo-hoy-chip" title={`${p.conteos.vencidas} vencidas · ${p.conteos.hoy} para hoy`}>
+            <span className={`semaforo ${p.semaforo}`} /> {p.nombre}
+            {p.conteos.vencidas ? <span className="down"> {p.conteos.vencidas}</span> : null}
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function Dashboard() {
@@ -134,6 +163,8 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
+            <EquipoHoyCard />
 
             <div className="grid-2">
               <div className="card">

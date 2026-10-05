@@ -7,6 +7,7 @@ import { opcionesEtiqueta, useClientes, useEtiquetas, usePersonas } from "../../
 import { api, getList } from "../../lib/api";
 import {
   DIAS_SEMANA,
+  GESTION_INTERNA,
   PRIORIDADES,
   labelDe,
 } from "../../lib/constants";
@@ -153,7 +154,7 @@ export default function RecurrentesModal({ onClose }) {
         <div className="grid-2 tight">
           <Field label="Cliente">
             <select value={f.cliente ?? ""} onChange={set("cliente")}>
-              <option value="">Sin cliente</option>
+              <option value="">{GESTION_INTERNA}</option>
               {clientes
                 .filter(
                   (c) => c.estado !== "baja" || c.id === Number(f.cliente),

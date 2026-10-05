@@ -35,7 +35,9 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
  la agencia (`google.py`: refresh token cifrado, entrega access tokens en `/api/auth/google/token/`). Los de equipo
  tienen uno o varios `roles` (CM, editor, diseño, foto, colaborador); las secciones extra de cada rol están en
  `PERMISOS_POR_ROL` (`accounts/models.py`) y se chequean con `requiere_permiso` / `tiene_permiso` (`core/permissions.py`).
- Todo el equipo ve todas las tareas y edita las suyas; los eventos del calendario solo los edita quien los creó.
+ Todo el equipo ve todas las tareas y edita las suyas; las sin cliente son «AuraTeam - Gestión Interna» (no es un
+ cliente) y las edita cualquiera (`es_interna`, salvo las de pagos de servicios). Los eventos del calendario solo los
+ edita quien los creó.
   - `clientes`: Cliente, Contrato, Cobro (generación de cobros, registrar pago, ajustes de precio).
     Onboarding (`onboarding.py`): al crear un cliente, los `PasoOnboarding` activos (plantilla en Configuración →
     Onboarding) se vuelven tareas `onboarding=True` asignadas por rol; el paso `accion='drive'` vincula

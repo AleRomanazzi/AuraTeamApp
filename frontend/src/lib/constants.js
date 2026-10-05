@@ -51,6 +51,9 @@ export function nombreRoles(usuario) {
   return (usuario?.roles ?? []).map((r) => labelDe(ROLES_EQUIPO, r)).join(' + ') || 'Equipo'
 }
 
+/** Tareas y eventos sin cliente: la gestión de la agencia, que ve y edita todo el equipo. */
+export const GESTION_INTERNA = 'AuraTeam - Gestión Interna'
+
 export const ROLES_ONBOARDING = [{ value: 'admin', label: 'Socios' }, ...ROLES_EQUIPO.filter((r) => r.value !== 'colaborador').map(({ value, label }) => ({ value, label }))]
 
 export const ESTADOS_TAREA = [

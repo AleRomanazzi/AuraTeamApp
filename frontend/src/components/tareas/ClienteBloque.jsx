@@ -24,7 +24,7 @@ function fechaTarea(t, hoy) {
   return <span>{formatFechaCorta(t.fecha_limite)}</span>
 }
 
-/** Bloque de un cliente (o «Sin cliente» si `cliente.id` es null): agenda + tareas abiertas. */
+/** Bloque de un cliente (o de la gestión interna si `cliente.id` es null): agenda + tareas abiertas. */
 export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, proximas, hoy, personas, tildadas, onAbrirTarea, onNuevaTarea, onAbrirDia, onMarcarHecha, onPlan }) {
   const [expandido, setExpandido] = useState(false)
   const vencidas = tareas.filter((t) => t.vencida).length
@@ -34,7 +34,7 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
   return (
     <section className="tc-bloque" id={`bloque-${cliente.id ?? 'interno'}`} style={{ '--cliente': color }}>
       <header className="tc-head">
-        <span className="tc-avatar">{cliente.id ? iniciales(cliente.nombre).slice(0, 1) : '·'}</span>
+        <span className="tc-avatar">{cliente.id ? iniciales(cliente.nombre).slice(0, 1) : 'A'}</span>
         <div className="tc-head-main">
           <h3 className="tc-nombre">{cliente.nombre}</h3>
           <div className="tc-resumen">

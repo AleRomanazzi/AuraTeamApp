@@ -18,7 +18,14 @@ MAX_POR_DIA = 10
 MAX_TAREAS_PLAN = 100
 
 
-def es_tarea_propia(user, tarea) -> bool:
+def es_interna(tarea) -> bool:
+    """Gestión interna de la agencia (sin cliente): la edita cualquiera del equipo. Las de pagos de servicios no."""
+    return tarea.cliente_id is None and not hasattr(tarea, 'aviso_servicio')
+
+
+def puede_editar_tarea(user, tarea) -> bool:
+    if es_interna(tarea):
+        return True
     if tarea.user_id is not None and tarea.user_id == user.id:
         return True
     persona = persona_de(user)
@@ -51,7 +58,7 @@ class TareaSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request is None:
             return False
-        return es_admin(request.user) or es_tarea_propia(request.user, obj)
+        return es_admin(request.user) or puede_editar_tarea(request.user, obj)
 
     def get_notion_url(self, obj):
         return f'https://www.notion.so/{obj.notion_page_id.replace("-", "")}' if obj.notion_page_id else None
@@ -148,14 +155,14 @@ class TareaDelPlanSerializer(serializers.ModelSerializer):
 
 
 class PlanDelMesSerializer(serializers.Serializer):
-    """Varias tareas de un cliente creadas de una vez (Plan del mes)."""
+    """Varias tareas de un cliente (o de gestión interna, sin cliente) creadas de una vez (Plan del mes)."""
 
-    cliente = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all())
+    cliente = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), allow_null=True, required=False, default=None)
     tareas = TareaDelPlanSerializer(many=True, allow_empty=False, max_length=MAX_TAREAS_PLAN)
 
     @transaction.atomic
     def create(self, validated_data):
-        cliente, user = validated_data['cliente'], self.context['request'].user
+        cliente, user = validated_data.get('cliente'), self.context['request'].user
         creadas = []
         for datos in validated_data['tareas']:
             personas = datos.pop('asignados', [])

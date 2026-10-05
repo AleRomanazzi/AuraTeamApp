@@ -4,7 +4,7 @@ import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import { opcionesEtiqueta, useClientes, useEtiquetas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { COLORES } from '../../lib/constants'
+import { COLORES, GESTION_INTERNA } from '../../lib/constants'
 import { toDatetimeLocal } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { confirmar } from '../../store/confirmStore'
@@ -123,7 +123,7 @@ export default function EventoForm({ inicial, dia, cliente, onClose }) {
           </Field>
           <Field label="Cliente" hint="En Google, el evento toma su color.">
             <select value={f.cliente ?? ''} onChange={elegirCliente}>
-              <option value="">— Sin cliente —</option>
+              <option value="">{GESTION_INTERNA}</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nombre}

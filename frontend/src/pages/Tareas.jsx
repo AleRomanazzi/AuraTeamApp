@@ -14,6 +14,7 @@ import QueryState from '../components/ui/QueryState'
 import { seguirSincronizando, useSyncCalendario } from '../features/google/useSyncCalendario'
 import { puede, useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
+import { GESTION_INTERNA } from '../lib/constants'
 import { diaDe, lunesDe, sumarDias, todayISO } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
 import { QK, TAREAS, invalidar } from '../lib/queryKeys'
@@ -25,7 +26,7 @@ const FILTROS = [
   { value: 'semana', label: 'Esta semana' },
 ]
 const SALIDA_MS = 1700
-const SIN_CLIENTE = { id: null, nombre: 'Sin cliente', color: '' }
+const INTERNA = { id: null, nombre: GESTION_INTERNA, color: 'var(--gold)' }
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
 
 const ordenar = (a, b) =>
@@ -144,7 +145,7 @@ export default function Tareas() {
   const filtradas = useMemo(() => {
     const s = busqueda.trim().toLowerCase()
     return (q.data ?? []).filter((t) => {
-      if (s && !`${t.titulo} ${t.descripcion} ${t.cliente_nombre ?? ''}`.toLowerCase().includes(s)) return false
+      if (s && !`${t.titulo} ${t.descripcion} ${t.cliente_nombre ?? GESTION_INTERNA}`.toLowerCase().includes(s)) return false
       if (filtro === 'mias') return Boolean(me?.persona) && t.asignados.includes(me.persona)
       if (filtro === 'vencidas') return t.vencida
       if (filtro === 'semana') return Boolean(t.fecha_limite) && t.fecha_limite >= semana[0] && t.fecha_limite <= semana[6]
@@ -169,7 +170,7 @@ export default function Tareas() {
     for (const t of abiertas) if (t.fecha_limite) marcar(t.cliente ?? 'interno', t.fecha_limite, { key: `t${t.id}`, tipo: 'tarea', color: t.cliente_color || 'var(--gold)' })
 
     const filtrando = filtro !== 'todas' || busqueda.trim()
-    return [...[...lista.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')), SIN_CLIENTE]
+    return [INTERNA, ...[...lista.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))]
       .map((c) => ({
         cliente: c,
         tareas: abiertas.filter((t) => (t.cliente ?? null) === c.id).sort(ordenar),
@@ -179,14 +180,14 @@ export default function Tareas() {
   }, [filtradas, esAdmin, clientes, mios.data, me, eventos.data, filtro, busqueda])
 
   const misClientes = new Set((mios.data ?? []).map((c) => c.id))
-  const puedePlan = (c) => Boolean(c.id) && (esAdmin || (puede(me, 'plan_tareas') && misClientes.has(c.id)))
+  const puedePlan = (c) => esAdmin || (puede(me, 'plan_tareas') && (c.id === null || misClientes.has(c.id)))
 
   const irA = (id) => document.getElementById(`bloque-${id ?? 'interno'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const tareasDeCalendario = calendario ? (q.data ?? []).filter((t) => t.estado !== 'hecha' && (t.cliente ?? null) === calendario.cliente.id) : []
 
   return (
     <>
-      <PageHeader titulo="Tareas" subtitulo={esAdmin ? 'Tareas y agenda de cada cliente' : 'Tus clientes: tareas y agenda. Editás las tuyas.'}>
+      <PageHeader titulo="Tareas" subtitulo={esAdmin ? 'Gestión interna y tareas y agenda de cada cliente' : 'Gestión interna (la editan todos) y tus clientes, donde editás las tuyas.'}>
         <div className="seg" role="tablist" aria-label="Vista">
           <button type="button" role="tab" aria-selected={vista === 'clientes'} className={vista === 'clientes' ? 'active' : ''} onClick={() => setVista('clientes')}>
             Por cliente

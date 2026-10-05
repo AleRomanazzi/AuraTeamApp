@@ -4,7 +4,7 @@ import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import { opcionesEtiqueta, useClientes, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
 import { api } from '../../lib/api'
-import { ESTADOS_TAREA, PRIORIDADES } from '../../lib/constants'
+import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES } from '../../lib/constants'
 import { notify, notifyError } from '../../lib/notify'
 import { TAREAS, invalidar } from '../../lib/queryKeys'
 import { confirmar } from '../../store/confirmStore'
@@ -113,9 +113,9 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
     >
       <fieldset className="plain-fieldset" disabled={!editable}>
         <div className="tarea-sheet-meta">
-          <span className="cat-dot" style={{ background: clienteSel?.color || 'var(--text-dim)' }} />
+          <span className="cat-dot" style={{ background: f.cliente ? clienteSel?.color || 'var(--text-dim)' : 'var(--gold)' }} />
           <select className="select-bare" value={f.cliente ?? ''} onChange={set('cliente')} aria-label="Cliente">
-            <option value="">Sin cliente</option>
+            <option value="">{GESTION_INTERNA}</option>
             {clientes
               .filter((c) => c.estado !== 'baja' || c.id === Number(f.cliente))
               .map((c) => (

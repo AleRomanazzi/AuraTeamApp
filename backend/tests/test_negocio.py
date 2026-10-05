@@ -203,7 +203,7 @@ def test_rol_equipo_ve_todas_las_tareas_y_edita_las_suyas(equipo_client, equipo_
     otra = Persona.objects.create(nombre='Otra')
     mia = Tarea.objects.create(titulo='Mía', cliente=cliente)
     mia.asignaciones.create(persona=persona)
-    ajena = Tarea.objects.create(titulo='Ajena')
+    ajena = Tarea.objects.create(titulo='Ajena', cliente=cliente)
     ajena.asignaciones.create(persona=otra)
     data = {t['titulo']: t for t in equipo_client.get('/api/tareas/').data}
     assert set(data) == {'Mía', 'Ajena'}

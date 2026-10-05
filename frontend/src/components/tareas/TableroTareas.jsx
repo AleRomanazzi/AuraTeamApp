@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import Tag from '../ui/Tag'
-import { ESTADOS_TAREA, PRIORIDADES, labelDe } from '../../lib/constants'
+import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES, labelDe } from '../../lib/constants'
 import { formatFechaCorta } from '../../lib/format'
 
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
@@ -44,9 +44,9 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
               <div key={t.id} className={`task-card task-card--click${t.vencida ? ' task-card--late' : ''}`}>
                 <button type="button" className="task-card-open" onClick={() => onAbrir(t)} aria-label={`Abrir «${t.titulo}»`} />
                 <div className="task-card-top">
-                  <span className="task-card-cliente" title={t.cliente_nombre || 'Sin cliente'}>
-                    {t.cliente_nombre ? <span className="cat-dot" style={{ background: t.cliente_color }} /> : null}
-                    {t.cliente_nombre || 'Sin cliente'}
+                  <span className="task-card-cliente" title={t.cliente_nombre || GESTION_INTERNA}>
+                    <span className="cat-dot" style={{ background: t.cliente_nombre ? t.cliente_color : 'var(--gold)' }} />
+                    {t.cliente_nombre || GESTION_INTERNA}
                   </span>
                   <Tag color={PRIORIDADES.find((p) => p.value === t.prioridad)?.tag}>{labelDe(PRIORIDADES, t.prioridad)}</Tag>
                 </div>

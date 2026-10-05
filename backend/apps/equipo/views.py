@@ -29,8 +29,11 @@ from .serializers import (
     RepartirSerializer,
     TareaRecurrenteSerializer,
     TareaSerializer,
-    es_tarea_propia,
+    es_interna,
+    puede_editar_tarea,
 )
+
+GESTION_INTERNA = 'AuraTeam - Gestión Interna'
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +74,8 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
 
 class TareaPermission(permissions.BasePermission):
-    """Todos ven todas las tareas; el equipo crea y edita las suyas (asignadas o creadas por él). Borrar es del admin."""
+    """Todos ven todas las tareas; el equipo crea y edita las suyas (asignadas o creadas por él) y las de gestión interna.
+    Borrar es del admin."""
 
     message = 'Solo podés editar tus tareas.'
 
@@ -85,7 +89,7 @@ class TareaPermission(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
             return True
-        return es_tarea_propia(request.user, obj)
+        return puede_editar_tarea(request.user, obj)
 
 
 class TareaViewSet(viewsets.ModelViewSet):
@@ -93,7 +97,7 @@ class TareaViewSet(viewsets.ModelViewSet):
     permission_classes = [TareaPermission]
 
     def get_queryset(self):
-        qs = Tarea.objects.select_related('cliente').prefetch_related('asignaciones__persona')
+        qs = Tarea.objects.select_related('cliente', 'aviso_servicio').prefetch_related('asignaciones__persona')
         if not es_admin(self.request.user):
             qs = qs.exclude(etiqueta__in=etiquetas.privadas())
             # Las tareas de pagos y aportes de servicios (con montos) solo las ve su responsable.
@@ -129,7 +133,7 @@ class TareaViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user, tarea = self.request.user, serializer.instance
         nuevos = serializer.validated_data.get('personas_asignadas')
-        if nuevos is not None and not es_admin(user) and tarea.user_id != user.id:
+        if nuevos is not None and not es_admin(user) and tarea.user_id != user.id and not es_interna(tarea):
             actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
             if {p.id for p in nuevos} != actuales:
                 raise PermissionDenied('Solo quien creó la tarea o un administrador puede cambiar los responsables.')
@@ -149,17 +153,19 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def plan(self, request):
-        """Crea varias tareas de un cliente de una vez. Llegan a Notion y a Google de a tandas, con las sincronizaciones."""
+        """Crea varias tareas de un cliente (o de gestión interna) de una vez. Llegan a Notion y a Google de a tandas."""
         serializer = PlanDelMesSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        user, cliente = request.user, serializer.validated_data['cliente']
+        user, cliente = request.user, serializer.validated_data.get('cliente')
         if not es_admin(user):
             persona = persona_de(user)
-            asignado = persona is not None and AsignacionCliente.objects.filter(persona=persona, cliente=cliente, activo=True).exists()
+            asignado = cliente is None or (
+                persona is not None and AsignacionCliente.objects.filter(persona=persona, cliente=cliente, activo=True).exists()
+            )
             if not (tiene_permiso(user, 'plan_tareas') and asignado):
                 raise PermissionDenied('Solo podés armar el plan de tus clientes asignados.')
         creadas = serializer.save()
-        avisos.asignadas_en_tanda(creadas, f'de {cliente.nombre} (plan del mes)', user, email=True)
+        avisos.asignadas_en_tanda(creadas, f'de {cliente.nombre if cliente else GESTION_INTERNA} (plan del mes)', user, email=True)
         return Response({'creadas': len(creadas)}, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):
@@ -318,7 +324,7 @@ def tareas_proximas(persona=None, dias=7):
     qs = Tarea.objects.exclude(estado='hecha').filter(fecha_limite__isnull=False, fecha_limite__lte=hoy.fromordinal(hoy.toordinal() + dias))
     if persona is not None:
         qs = qs.filter(asignaciones__persona=persona).exclude(etiqueta__in=etiquetas.privadas())
-    return qs.select_related('cliente').distinct()
+    return qs.select_related('cliente', 'aviso_servicio').distinct()
 
 
 class SeguimientoView(APIView):

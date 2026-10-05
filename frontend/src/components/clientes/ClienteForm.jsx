@@ -22,6 +22,8 @@ const VACIO = {
   google_color: '',
   palabras_clave: '',
   notas: '',
+  reporte_auto: false,
+  recordatorios_cobro: false,
 }
 
 export default function ClienteForm({ inicial, onClose, onGuardado }) {
@@ -123,6 +125,13 @@ export default function ClienteForm({ inicial, onClose, onGuardado }) {
       <Field label="Notas">
         <textarea rows={3} value={f.notas} onChange={set('notas')} />
       </Field>
+      <label className="check-row">
+        <input type="checkbox" checked={f.recordatorios_cobro} onChange={(e) => setF((s) => ({ ...s, recordatorios_cobro: e.target.checked }))} /> Recordatorios de cobro automáticos por email (antes del
+        vencimiento, el día y si sigue impago)
+      </label>
+      <label className="check-row">
+        <input type="checkbox" checked={f.reporte_auto} onChange={(e) => setF((s) => ({ ...s, reporte_auto: e.target.checked }))} /> Enviar el reporte mensual sin revisarlo antes
+      </label>
       {!inicial?.id ? (
         <label className="check-row">
           <input type="checkbox" checked={onboarding} onChange={(e) => setOnboarding(e.target.checked)} /> Iniciar el onboarding (tareas de la plantilla y carpeta de Drive)

@@ -11,7 +11,14 @@ from apps.calendario.views import (
     GoogleCalendarSincronizarView,
     VencimientosView,
 )
-from apps.clientes.views import ClienteViewSet, CobroViewSet, ContratoViewSet, PasoOnboardingViewSet, RentabilidadView
+from apps.clientes.views import (
+    ClienteViewSet,
+    CobroViewSet,
+    ContratoViewSet,
+    EnvioClienteViewSet,
+    PasoOnboardingViewSet,
+    RentabilidadView,
+)
 from apps.equipo.views import (
     AsignacionClienteViewSet,
     LiquidacionViewSet,
@@ -35,6 +42,7 @@ router.register('clientes', ClienteViewSet, basename='cliente')
 router.register('contratos', ContratoViewSet, basename='contrato')
 router.register('cobros', CobroViewSet, basename='cobro')
 router.register('onboarding-pasos', PasoOnboardingViewSet, basename='paso-onboarding')
+router.register('envios', EnvioClienteViewSet, basename='envio')
 router.register('servicios', ServicioViewSet, basename='servicio')
 router.register('personal', PersonaViewSet, basename='persona')
 router.register('tareas-recurrentes', TareaRecurrenteViewSet, basename='tarea-recurrente')

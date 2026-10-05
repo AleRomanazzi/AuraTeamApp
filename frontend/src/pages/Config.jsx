@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import CalendariosGoogle from '../components/config/CalendariosGoogle'
+import ConfigEnvios from '../components/config/ConfigEnvios'
 import NotionConfig from '../components/config/NotionConfig'
 import PlantillaOnboarding from '../components/config/PlantillaOnboarding'
 import Field from '../components/ui/Field'
@@ -615,6 +616,7 @@ export default function Config() {
           { value: 'usuarios', label: 'Usuarios' },
           { value: 'categorias', label: 'Categorías' },
           { value: 'onboarding', label: 'Onboarding' },
+          { value: 'emails', label: 'Emails a clientes' },
           { value: 'datos', label: 'Datos' },
         ]
       : []),
@@ -633,6 +635,7 @@ export default function Config() {
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
       {actual === 'categorias' ? <Categorias /> : null}
       {actual === 'onboarding' ? <PlantillaOnboarding /> : null}
+      {actual === 'emails' ? <ConfigEnvios /> : null}
       {actual === 'datos' ? <Datos /> : null}
     </>
   )

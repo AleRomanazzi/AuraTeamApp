@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AjusteForm from '../components/clientes/AjusteForm'
 import ClienteForm from '../components/clientes/ClienteForm'
 import ContratoForm from '../components/clientes/ContratoForm'
+import EnviosCliente from '../components/clientes/EnviosCliente'
 import OnboardingCliente from '../components/clientes/OnboardingCliente'
 import CobrosTabla from '../components/cobros/CobrosTabla'
 import AsignacionForm from '../components/equipo/AsignacionForm'
@@ -399,6 +400,7 @@ export default function ClienteDetalle() {
           { value: 'contratos', label: 'Contratos' },
           { value: 'cobros', label: 'Cobros' },
           { value: 'equipo', label: 'Equipo' },
+          { value: 'emails', label: 'Emails' },
         ]
       : []),
     ...(verStats ? [{ value: 'estadisticas', label: 'Estadísticas' }] : []),
@@ -488,6 +490,7 @@ export default function ClienteDetalle() {
             {tab === 'contratos' ? <Contratos clienteId={clienteId} /> : null}
             {tab === 'cobros' ? <CobrosCliente clienteId={clienteId} /> : null}
             {tab === 'equipo' ? <EquipoCliente clienteId={clienteId} /> : null}
+            {tab === 'emails' ? <EnviosCliente clienteId={clienteId} email={c.email} /> : null}
             {tab === 'estadisticas' ? <EstadisticasCliente clienteId={clienteId} /> : null}
             {tab === 'rentabilidad' ? <RentabilidadCliente clienteId={clienteId} /> : null}
             {editando ? <ClienteForm inicial={c} onClose={() => setEditando(false)} /> : null}

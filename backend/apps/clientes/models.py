@@ -62,6 +62,8 @@ class Cliente(models.Model):
     palabras_clave = models.CharField(max_length=200, blank=True)
     drive_folder_id = models.CharField(max_length=80, blank=True)
     onboarding_iniciado = models.DateTimeField(null=True, blank=True)
+    reporte_auto = models.BooleanField(default=False)
+    recordatorios_cobro = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['nombre']
@@ -196,3 +198,50 @@ class Cobro(models.Model):
     @property
     def vencido(self) -> bool:
         return self.estado in ('pendiente', 'parcial') and self.vencimiento < today()
+
+
+TIPOS_ENVIO = [('reporte', 'Reporte mensual'), ('recordatorio', 'Recordatorio de cobro')]
+ESTADOS_ENVIO = [('borrador', 'Borrador'), ('enviado', 'Enviado'), ('error', 'Error'), ('descartado', 'Descartado')]
+
+
+class EnvioCliente(models.Model):
+    """Email a un cliente (reporte del mes o recordatorio de cobro): registro de lo enviado e idempotencia del cron."""
+
+    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='envios')
+    cobro = models.ForeignKey('Cobro', null=True, blank=True, on_delete=models.CASCADE, related_name='envios')
+    tipo = models.CharField(max_length=12, choices=TIPOS_ENVIO)
+    periodo = models.CharField(max_length=7)
+    # Etapa del recordatorio: 'antes', 'dia', '+3', '+7'… o 'manual' (se puede repetir).
+    clave = models.CharField(max_length=12, blank=True)
+    estado = models.CharField(max_length=10, choices=ESTADOS_ENVIO, default='borrador')
+    para = models.CharField(max_length=254, blank=True)
+    asunto = models.CharField(max_length=200)
+    html = models.TextField()
+    error = models.CharField(max_length=300, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+    enviado_en = models.DateTimeField(null=True, blank=True)
+    enviado_por = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['-creado']
+        constraints = [
+            models.UniqueConstraint(fields=['cliente', 'periodo'], condition=Q(tipo='reporte'), name='envio_reporte_unico'),
+            models.UniqueConstraint(
+                fields=['cobro', 'clave'], condition=Q(tipo='recordatorio') & ~Q(clave='manual'), name='envio_recordatorio_unico'
+            ),
+        ]
+
+
+class ConfigEnvios(models.Model):
+    """Configuración única de los emails automáticos a clientes."""
+
+    dia_reporte = models.PositiveSmallIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(28)])
+    dias_antes = models.PositiveSmallIntegerField(default=3, validators=[MaxValueValidator(15)])
+    dias_despues = models.CharField(max_length=40, default='3,7')
+
+    @classmethod
+    def get(cls):
+        return cls.objects.get_or_create(pk=1)[0]
+
+    def lista_despues(self) -> list[int]:
+        return sorted({int(x) for x in self.dias_despues.replace(' ', '').split(',') if x.isdigit() and 0 < int(x) <= 60})

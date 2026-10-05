@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import BarChart from '../components/ui/BarChart'
 import MonthPicker from '../components/ui/MonthPicker'
 import PageHeader from '../components/ui/PageHeader'
+import { ReportesPendientes } from '../components/clientes/EnviosCliente'
 import ProgressBar from '../components/ui/ProgressBar'
 import QueryState from '../components/ui/QueryState'
 import StatCard from '../components/ui/StatCard'
@@ -176,6 +177,7 @@ export default function Dashboard() {
             </div>
 
             <EquipoHoyCard />
+            <ReportesPendientes />
 
             <div className="grid-2">
               <div className="card">

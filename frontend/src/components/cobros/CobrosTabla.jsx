@@ -36,6 +36,20 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
     onError: (e) => notifyError(e),
   })
 
+  const recordar = useMutation({
+    mutationFn: (c) => api.post(`cobros/${c.id}/recordar/`),
+    onSuccess: (_, c) => {
+      invalidar(qc, ['cobros'])
+      notify(`Recordatorio enviado a ${c.cliente_email}`)
+    },
+    onError: (e) => notifyError(e, 'No se pudo enviar el recordatorio'),
+  })
+  const enviarRecordatorio = async (c) => {
+    if (await confirmar({ titulo: `Recordatorio a ${c.cliente_nombre}`, mensaje: `Se envía ahora un email a ${c.cliente_email} desde el Gmail de la agencia con el saldo de ${fmt(c.saldo)}.`, confirmar: 'Enviar' })) {
+      recordar.mutate(c)
+    }
+  }
+
   const ejecutar = async (c, tipo) => {
     const textos = {
       'revertir-pago': `Se elimina el ingreso de ${fmt(c.monto_cobrado)} y el cobro vuelve a pendiente.`,
@@ -83,6 +97,13 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
                   <td className={mostrarCliente ? 'celda-ancha' : 'celda-principal'}>
                     <div className="cell-title">{c.concepto}</div>
                     {mostrarPeriodo ? <div className="cell-sub">{monthLabel(c.periodo)}</div> : null}
+                    {abierto && (c.ultimo_recordatorio || c.cliente_recordatorios) ? (
+                      <div className="cell-sub">
+                        {c.ultimo_recordatorio ? `Recordado el ${formatFecha(c.ultimo_recordatorio, { day: 'numeric', month: 'short' })}` : ''}
+                        {c.ultimo_recordatorio && c.cliente_recordatorios ? ' · ' : ''}
+                        {c.cliente_recordatorios ? 'recordatorios automáticos' : ''}
+                      </div>
+                    ) : null}
                     {c.fecha_pago ? (
                       <div className="cell-sub">
                         Pagó {formatFecha(c.fecha_pago, { day: 'numeric', month: 'short' })}
@@ -113,9 +134,15 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
                         <a className="btn btn-secondary btn-xs" href={linkWhatsApp(c)} target="_blank" rel="noreferrer" title="Recordatorio por WhatsApp">
                           WhatsApp
                         </a>
-                        <a className="btn btn-secondary btn-xs" href={linkEmail(c)} title="Recordatorio por email">
-                          ✉
-                        </a>
+                        {c.cliente_email ? (
+                          <button type="button" className="btn btn-secondary btn-xs" disabled={recordar.isPending} onClick={() => enviarRecordatorio(c)} title="Enviar recordatorio ahora por email (Gmail de la agencia)">
+                            ✉ Recordar
+                          </button>
+                        ) : (
+                          <a className="btn btn-secondary btn-xs" href={linkEmail(c)} title="Recordatorio por email (el cliente no tiene email cargado)">
+                            ✉
+                          </a>
+                        )}
                       </>
                     ) : null}
                     <details className="menu">

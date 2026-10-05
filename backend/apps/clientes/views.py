@@ -2,8 +2,8 @@ import logging
 import re
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import DecimalField, ExpressionWrapper, F, ProtectedError, Q, Sum
-from rest_framework import status, viewsets
+from django.db.models import DecimalField, ExpressionWrapper, F, Max, OuterRef, ProtectedError, Q, Subquery, Sum
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -15,8 +15,8 @@ from apps.core.utils import add_months, mes_label, money, parse_mes, today
 from apps.equipo.models import AsignacionCliente
 from apps.equipo.serializers import TareaSerializer
 
-from . import onboarding, services
-from .models import Cliente, Cobro, Contrato, PasoOnboarding
+from . import envios, onboarding, services
+from .models import Cliente, Cobro, ConfigEnvios, Contrato, EnvioCliente, PasoOnboarding
 from .reportes import rentabilidad_clientes
 from .serializers import (
     AjusteInputSerializer,
@@ -25,7 +25,10 @@ from .serializers import (
     ClienteFichaSerializer,
     ClienteSerializer,
     CobroSerializer,
+    ConfigEnviosSerializer,
     ContratoSerializer,
+    EnvioClienteDetalleSerializer,
+    EnvioClienteSerializer,
     PasoOnboardingSerializer,
     RegistrarPagoSerializer,
 )
@@ -131,6 +134,13 @@ class ClienteViewSet(viewsets.ModelViewSet):
         if es_admin(request.user):
             datos['sugeridos'] = onboarding.responsables_sugeridos(cliente, request.user)
         return Response(datos)
+
+    @action(detail=True, methods=['post'], url_path='reporte-email', permission_classes=[IsAdmin])
+    def reporte_email(self, request, pk=None):
+        """Prepara (o regenera) el borrador del reporte del mes para enviarle al cliente."""
+        _, _, periodo = parse_mes(request.data.get('mes') or request.query_params.get('mes'), required=True)
+        envio = envios.preparar_reporte(self.get_object(), periodo)
+        return Response(EnvioClienteDetalleSerializer(envio).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def drive(self, request, pk=None):
@@ -278,7 +288,10 @@ class CobroViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdmin]
 
     def get_queryset(self):
-        qs = Cobro.objects.select_related('cliente', 'contrato')
+        recordado = EnvioCliente.objects.filter(cobro=OuterRef('pk'), tipo='recordatorio', estado='enviado').values('cobro')
+        qs = Cobro.objects.select_related('cliente', 'contrato').annotate(
+            ultimo_recordatorio=Subquery(recordado.annotate(m=Max('enviado_en')).values('m')[:1])
+        )
         p = self.request.query_params
         periodo = p.get('periodo') or p.get('mes')
         if periodo:
@@ -294,6 +307,19 @@ class CobroViewSet(viewsets.ModelViewSet):
         elif estado:
             qs = qs.filter(estado=estado)
         return qs
+
+    @action(detail=True, methods=['post'])
+    def recordar(self, request, pk=None):
+        """«Enviar recordatorio ahora»: email al cliente con el saldo del cobro."""
+        cobro = self.get_object()
+        if cobro.estado not in ABIERTOS:
+            return Response({'detail': 'El cobro no tiene saldo pendiente.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not cobro.cliente.email:
+            return Response({'detail': f'{cobro.cliente.nombre} no tiene email cargado.'}, status=status.HTTP_400_BAD_REQUEST)
+        envio = envios.recordar(cobro, 'manual', today(), request.user)
+        if envio.estado != 'enviado':
+            return Response({'detail': envio.error or 'No se pudo enviar el email.'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(EnvioClienteSerializer(envio).data)
 
     def destroy(self, request, *args, **kwargs):
         cobro = self.get_object()
@@ -367,3 +393,52 @@ class RentabilidadView(APIView):
         filas = rentabilidad_clientes(inicio, fin, periodo)
         tot = {k: sum((Decimal(f[k]) for f in filas), Decimal('0')) for k in ('facturado', 'ingresos', 'costo_total', 'margen')}
         return Response({'periodo': periodo, 'clientes': filas, 'totales': {k: str(money(v)) for k, v in tot.items()}})
+
+
+class EnvioClienteViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Emails a clientes: reportes en borrador para revisar y enviar, y el historial de recordatorios."""
+
+    permission_classes = [IsAdmin]
+    pagination_class = None
+
+    def get_serializer_class(self):
+        return EnvioClienteDetalleSerializer if self.action == 'retrieve' else EnvioClienteSerializer
+
+    def get_queryset(self):
+        qs = EnvioCliente.objects.select_related('cliente', 'enviado_por')
+        p = self.request.query_params
+        for campo in ('cliente', 'tipo', 'estado', 'cobro'):
+            if p.get(campo):
+                qs = qs.filter(**{campo: p[campo]})
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        return Response(self.get_serializer(self.get_queryset()[:100], many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def enviar(self, request, pk=None):
+        envio = self.get_object()
+        if envio.estado == 'enviado':
+            return Response({'detail': 'Ya se envió.'}, status=status.HTTP_400_BAD_REQUEST)
+        envio = envios.enviar(envio, request.user)
+        if envio.estado != 'enviado':
+            return Response({'detail': envio.error or 'No se pudo enviar.'}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(EnvioClienteSerializer(envio).data)
+
+    @action(detail=True, methods=['post'])
+    def descartar(self, request, pk=None):
+        envio = self.get_object()
+        if envio.estado == 'enviado':
+            return Response({'detail': 'Ya se envió.'}, status=status.HTTP_400_BAD_REQUEST)
+        envio.estado = 'descartado'
+        envio.save(update_fields=['estado'])
+        return Response(EnvioClienteSerializer(envio).data)
+
+    @action(detail=False, methods=['get', 'put'])
+    def config(self, request):
+        config = ConfigEnvios.get()
+        if request.method == 'PUT':
+            s = ConfigEnviosSerializer(config, data=request.data)
+            s.is_valid(raise_exception=True)
+            s.save()
+        return Response(ConfigEnviosSerializer(config).data)

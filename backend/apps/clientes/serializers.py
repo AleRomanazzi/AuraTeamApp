@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.core.utils import MES_RE, equivalente_mensual, money, today
 
-from .models import AjustePrecio, Cliente, Cobro, Contrato, PasoOnboarding
+from .models import AjustePrecio, Cliente, Cobro, ConfigEnvios, Contrato, EnvioCliente, PasoOnboarding
 
 
 def fee_mensual_de(cliente) -> Decimal:
@@ -55,7 +55,7 @@ class ClienteSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'nombre', 'razon_social', 'cuit', 'rubro', 'contacto', 'email', 'whatsapp', 'estado',
             'fecha_alta', 'color', 'notas', 'creado', 'deuda', 'deuda_vencida', 'fee_mensual', 'asignados',
-            'google_color', 'palabras_clave', 'drive_url', 'onboarding_iniciado',
+            'google_color', 'palabras_clave', 'drive_url', 'onboarding_iniciado', 'reporte_auto', 'recordatorios_cobro',
         )
         read_only_fields = ('id', 'creado', 'drive_url', 'onboarding_iniciado')
 
@@ -142,6 +142,8 @@ class CobroSerializer(serializers.ModelSerializer):
     saldo = serializers.SerializerMethodField()
     vencido = serializers.BooleanField(read_only=True)
     dias_vencido = serializers.SerializerMethodField()
+    ultimo_recordatorio = serializers.DateTimeField(read_only=True, default=None)
+    cliente_recordatorios = serializers.BooleanField(source='cliente.recordatorios_cobro', read_only=True)
 
     class Meta:
         model = Cobro
@@ -149,7 +151,7 @@ class CobroSerializer(serializers.ModelSerializer):
             'id', 'cliente', 'cliente_nombre', 'cliente_color', 'cliente_whatsapp', 'cliente_email', 'contrato',
             'contrato_concepto', 'periodo', 'concepto', 'monto', 'vencimiento', 'monto_cobrado', 'saldo',
             'fecha_pago', 'medio_pago', 'comprobante', 'estado', 'vencido', 'dias_vencido', 'transaccion',
-            'notas', 'creado',
+            'notas', 'creado', 'ultimo_recordatorio', 'cliente_recordatorios',
         )
         read_only_fields = (
             'id', 'monto_cobrado', 'fecha_pago', 'medio_pago', 'comprobante', 'estado', 'transaccion', 'creado',
@@ -196,3 +198,38 @@ class PasoOnboardingSerializer(serializers.ModelSerializer):
 
         request = self.context.get('request')
         return etiquetas.validar(value, request and request.user, getattr(self.instance, 'etiqueta', None))
+
+
+class EnvioClienteSerializer(serializers.ModelSerializer):
+    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    enviado_por_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EnvioCliente
+        fields = (
+            'id', 'cliente', 'cliente_nombre', 'cobro', 'tipo', 'periodo', 'clave', 'estado', 'para', 'asunto', 'error',
+            'creado', 'enviado_en', 'enviado_por_nombre',
+        )
+        read_only_fields = fields
+
+    def get_enviado_por_nombre(self, obj):
+        u = obj.enviado_por
+        return (u.get_full_name() or u.username) if u else None
+
+
+class EnvioClienteDetalleSerializer(EnvioClienteSerializer):
+    class Meta(EnvioClienteSerializer.Meta):
+        fields = (*EnvioClienteSerializer.Meta.fields, 'html')
+        read_only_fields = fields
+
+
+class ConfigEnviosSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConfigEnvios
+        fields = ('dia_reporte', 'dias_antes', 'dias_despues')
+
+    def validate_dias_despues(self, value):
+        partes = [x for x in str(value).replace(' ', '').split(',') if x]
+        if not all(x.isdigit() and 0 < int(x) <= 60 for x in partes):
+            raise serializers.ValidationError('Días separados por coma, entre 1 y 60 (p. ej. 3,7).')
+        return ','.join(str(n) for n in sorted({int(x) for x in partes}))

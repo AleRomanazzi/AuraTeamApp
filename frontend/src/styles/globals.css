@@ -616,7 +616,7 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .seg-tareas { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
 .seg-tarea { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
 .seg-tarea-main { min-width: 0; }
-.seg-tarea-titulo { color: var(--text); font-size: 13px; font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seg-tarea-titulo { color: var(--text); font-size: 13px; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .seg-tarea-titulo.tachada { text-decoration: line-through; color: var(--text-dim); }
 .seg-tarea .select-sm { max-width: 120px; font-size: 12px; }
 @media (max-width: 720px) {

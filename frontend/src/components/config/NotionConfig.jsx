@@ -74,7 +74,19 @@ export default function NotionConfig() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: QK.notionEstado, queryFn: () => api.get('notion/').then((r) => r.data) })
   const sincronizar = useMutation({
-    mutationFn: () => api.post('notion/sincronizar/', { completa: true }).then((r) => r.data),
+    mutationFn: async () => {
+      const total = { creadas: 0, actualizadas: 0, vinculadas: 0, enviadas: 0, borradas: 0 }
+      let cursor = null
+      let ultimo = null
+      for (let i = 0; i < 40; i++) {
+        const { data } = await api.post('notion/sincronizar/', { completa: true, cursor })
+        ultimo = data
+        for (const k of Object.keys(total)) total[k] += data[k] || 0
+        if (!data.continuar) return { ...data, ...total, clientes: data.clientes }
+        cursor = data.cursor
+      }
+      return { ...ultimo, ...total }
+    },
     onSuccess: (r) => {
       invalidar(qc, ['tareas', 'notion', 'personal', 'clientes', 'dashboard', 'mi-panel'])
       notify(resumenSync(r))

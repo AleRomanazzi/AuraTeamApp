@@ -15,8 +15,11 @@ const queryClient = new QueryClient({
       retry: (intentos, error) => {
         const status = error?.response?.status
         if (status && status >= 400 && status < 500) return false
+        // El servidor de Render se duerme: las primeras llamadas se rechazan hasta que despierta.
+        if (!error?.response) return intentos < 3
         return intentos < 1
       },
+      retryDelay: (intento) => [2000, 5000, 10000][intento] ?? 10000,
     },
     mutations: { retry: false },
   },

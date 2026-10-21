@@ -44,8 +44,9 @@ class NotionSincronizarView(APIView):
         if not notion.configurado():
             return Response({'omitida': True, 'detail': 'Notion no está configurado.'})
         completa = bool(request.data.get('completa')) and es_admin(request.user)
+        cursor = request.data.get('cursor')
         try:
-            return Response(notion.sincronizar(completa=completa))
+            return Response(notion.sincronizar(completa=completa, cursor=cursor if isinstance(cursor, str) else None))
         except notion.NotionError as e:
             return Response({'detail': str(e)}, status=status.HTTP_502_BAD_GATEWAY)
 

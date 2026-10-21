@@ -27,6 +27,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.calendario.etiquetas import privadas as etiquetas_privadas
 from apps.clientes.models import Cliente
@@ -45,6 +46,8 @@ INTERVALO_INCREMENTAL = timedelta(seconds=60)
 DIAS_HECHAS_A_ENVIAR = 30
 # Tope de tareas recurrentes que sube cada sincronización incremental, para no pasar el timeout del servidor.
 LIMITE_ENVIO = 25
+# Páginas por tanda. Cada una pide sus checkboxes: una sincronización completa no entra en el tiempo del servidor.
+LIMITE_PAGINAS = 15
 
 P_TITULO = 'Tarea'
 P_NOTAS = 'Notas'
@@ -102,7 +105,7 @@ def _request(method, path, body=None, params=None):
             detalle = r.json().get('message', '')
         except ValueError:
             detalle = ''
-        raise NotionError(f'Notion respondió {r.status_code}. {detalle}'.strip())
+        raise NotionError(f'Notion respondió {r.status_code} en {method} {path}. {detalle}'.strip())
     return r.json()
 
 
@@ -633,16 +636,25 @@ def vincular_personas() -> list:
 # --- Sincronización --------------------------------------------------------------------------------------------------
 
 
-def sincronizar(completa=False) -> dict:
+def _momento(iso):
+    if not iso:
+        return None
+    cuando = parse_datetime(iso)
+    if cuando and timezone.is_naive(cuando):
+        cuando = timezone.make_aware(cuando, timezone.get_current_timezone())
+    return cuando
+
+
+def sincronizar(completa=False, cursor=None) -> dict:
     estado = EstadoNotion.get()
     inicio = timezone.now()
-    if not completa and estado.ultima_sync and inicio - estado.ultima_sync < INTERVALO_INCREMENTAL:
+    if not completa and not cursor and estado.ultima_sync and inicio - estado.ultima_sync < INTERVALO_INCREMENTAL:
         return {'omitida': True}
 
     resumen = {'creadas': 0, 'actualizadas': 0, 'vinculadas': 0, 'borradas': 0, 'enviadas': 0}
     forzar_clientes = set()
     try:
-        if completa:
+        if completa and not cursor:
             clientes = vincular_clientes()
             forzar_clientes = set(clientes.pop('nuevos'))
             personas = vincular_personas()
@@ -650,16 +662,18 @@ def sincronizar(completa=False) -> dict:
             resumen['personas_vinculadas'] = len(personas)
             # Lo que el panel ya tenía de esos clientes/personas tiene que llegar a Notion antes de leerlo de vuelta.
             reenviar_tareas(Q(cliente__notion_page_id__in=forzar_clientes) | Q(asignaciones__persona_id__in=personas))
-        filtro = None
-        if not completa and estado.ultima_sync:
-            desde = estado.ultima_sync - timedelta(minutes=5)
-            filtro = {'timestamp': 'last_edited_time', 'last_edited_time': {'on_or_after': desde.isoformat()}}
+        desde = _momento(cursor) if cursor else None
+        if desde is None and not completa and estado.ultima_sync:
+            # Recién sincronizado: se solapan 5 min por si algo se editó en el medio.
+            # Si quedó atrasada es un corte de tanda: se sigue desde ahí, sin releer las mismas páginas.
+            desde = estado.ultima_sync - timedelta(minutes=5) if inicio - estado.ultima_sync < timedelta(minutes=3) else estado.ultima_sync
+        filtro = {'timestamp': 'last_edited_time', 'last_edited_time': {'on_or_after': desde.isoformat()}} if desde else None
         candidatos = {_clave(t.titulo): t for t in Tarea.objects.filter(notion_page_id__isnull=True)} if completa else None
 
-        vistas, sin_leer = set(), []
+        vistas, sin_leer, paginas = set(), [], []
         for ds, privada in _bases():
             try:
-                paginas = list(_consultar(ds, filtro))
+                leidas = list(_consultar(ds, filtro))
             except NoEncontrada:
                 if not privada:
                     raise
@@ -667,13 +681,24 @@ def sincronizar(completa=False) -> dict:
                 sin_leer.append(privada)
                 resumen['privadas_sin_conectar'] = True
                 continue
-            for page in paginas:
-                vistas.add(_norm(page['id']))
-                r = aplicar_pagina(page, candidatos, forzar_clientes, privada)
-                if r:
-                    resumen[{'creada': 'creadas', 'actualizada': 'actualizadas', 'vinculada': 'vinculadas', 'borrada': 'borradas'}[r]] += 1
+            for page in leidas:
+                page['_privada'] = privada
+                paginas.append(page)
+        paginas.sort(key=lambda p: p.get('last_edited_time') or '')
+        # Sin fecha (los tests) se procesa todo: en Notion las páginas siempre traen last_edited_time.
+        corte = len(paginas) > LIMITE_PAGINAS and all(p.get('last_edited_time') for p in paginas)
+        if corte:
+            paginas = paginas[:LIMITE_PAGINAS]
+        for page in paginas:
+            vistas.add(_norm(page['id']))
+            r = aplicar_pagina(page, candidatos, forzar_clientes, page.pop('_privada', False))
+            if r:
+                resumen[{'creada': 'creadas', 'actualizada': 'actualizadas', 'vinculada': 'vinculadas', 'borrada': 'borradas'}[r]] += 1
 
-        if completa:
+        if corte:
+            resumen['continuar'] = True
+            resumen['cursor'] = (paginas[-1].get('last_edited_time') if paginas else None)
+        elif completa and cursor is None:
             sobrantes = Tarea.objects.exclude(notion_page_id=None).exclude(notion_page_id__in=vistas).exclude(notion_privada__in=sin_leer)
             for tarea in sobrantes:
                 try:
@@ -691,13 +716,19 @@ def sincronizar(completa=False) -> dict:
         else:
             resumen['enviadas'] = enviar_pendientes(bool(sin_leer))
             resumen['pendientes'] = _sin_pagina(bool(sin_leer)).count()
+            if completa and resumen['pendientes']:
+                resumen['continuar'] = True
+                resumen['cursor'] = cursor
     except NotionError as e:
         registrar_error(str(e))
         raise
 
-    estado.ultima_sync = inicio
-    if completa:
-        estado.ultima_sync_completa = inicio
+    if resumen.get('continuar') and resumen.get('cursor'):
+        estado.ultima_sync = _momento(resumen['cursor']) or inicio
+    else:
+        estado.ultima_sync = inicio
+        if completa:
+            estado.ultima_sync_completa = inicio
     estado.ultimo_error = ''
     estado.save(update_fields=['ultima_sync', 'ultima_sync_completa', 'ultimo_error'])
     return resumen

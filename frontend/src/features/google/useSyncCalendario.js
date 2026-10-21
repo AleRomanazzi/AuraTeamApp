@@ -5,6 +5,7 @@ import { invalidar } from '../../lib/queryKeys'
 /** Mientras queden envíos (o el servidor la haya salteado por el límite de una por minuto), se vuelve a pedir. */
 export const seguirSincronizando = (query) => {
   const d = query.state.data
+  if (d?.continuar) return 2_000
   return d?.pendientes || (d?.omitida && !d.detail) ? 65_000 : false
 }
 

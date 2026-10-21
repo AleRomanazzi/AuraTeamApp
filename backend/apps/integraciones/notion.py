@@ -273,7 +273,8 @@ def _sincronizar_bloques(tarea: Tarea, page_id):
             pass
     if not subs:
         return
-    resp = _request('POST', f'/blocks/{page_id}/children', {
+    # Notion solo acepta PATCH en esta ruta; un POST responde 400 «Invalid request URL».
+    resp = _request('PATCH', f'/blocks/{page_id}/children', {
         'children': [
             {'object': 'block', 'type': 'to_do', 'to_do': {'rich_text': _rich(s.titulo), 'checked': s.hecha}}
             for s in subs

@@ -75,6 +75,8 @@ class NotionFalso:
                 if method == 'GET':
                     res = [b for b in self.bloques.get(bid, []) if not b.get('in_trash')]
                     return httpx.Response(200, json={'results': res, 'has_more': False})
+                if method != 'PATCH':
+                    return httpx.Response(400, json={'message': 'Invalid request URL.'})
                 creados = []
                 for child in (json or {}).get('children') or []:
                     nuevo = str(uuid.uuid4())

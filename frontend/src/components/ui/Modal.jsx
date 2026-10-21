@@ -4,24 +4,31 @@ import { createPortal } from 'react-dom'
 export default function Modal({ open = true, onClose, title, size, children, footer, onSubmit }) {
   const ref = useRef(null)
   const titleId = useId()
+  const alCerrar = useRef(onClose)
+  useEffect(() => {
+    alCerrar.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!open) return undefined
     const previo = document.activeElement
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.()
+      if (e.key === 'Escape') alCerrar.current?.()
     }
     document.addEventListener('keydown', onKey)
     const t = setTimeout(() => {
-      const primero = ref.current?.querySelector('input:not([type=hidden]), select, textarea, button')
-      primero?.focus()
+      const raiz = ref.current
+      if (!raiz || raiz.contains(document.activeElement)) return
+      const campo = raiz.querySelector('input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled])')
+      const boton = raiz.querySelector('button:not(.modal-close):not([disabled])')
+      ;(campo || boton)?.focus()
     }, 0)
     return () => {
       clearTimeout(t)
       document.removeEventListener('keydown', onKey)
-      previo?.focus?.()
+      if (previo instanceof HTMLElement) previo.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

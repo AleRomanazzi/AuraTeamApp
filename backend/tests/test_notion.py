@@ -29,6 +29,7 @@ def _leer(nombre, valor):
 class NotionFalso:
     def __init__(self):
         self.paginas = {}
+        self.bloques = {}
         self.llamadas = []
         self.al_crear = None
 
@@ -67,6 +68,30 @@ class NotionFalso:
                 for k, v in (json.get('properties') or {}).items():
                     page['properties'][k] = _leer(k, v)
             return httpx.Response(200, json=page)
+        if path.startswith('/blocks/'):
+            partes = path.strip('/').split('/')
+            bid = str(uuid.UUID(partes[1]))
+            if partes[-1] == 'children':
+                if method == 'GET':
+                    res = [b for b in self.bloques.get(bid, []) if not b.get('in_trash')]
+                    return httpx.Response(200, json={'results': res, 'has_more': False})
+                creados = []
+                for child in (json or {}).get('children') or []:
+                    nuevo = str(uuid.uuid4())
+                    bloque = {'id': nuevo, 'type': child.get('type'), 'in_trash': False, 'to_do': child.get('to_do') or {}}
+                    self.bloques.setdefault(bid, []).append(bloque)
+                    creados.append(bloque)
+                return httpx.Response(200, json={'results': creados, 'has_more': False})
+            if method == 'PATCH':
+                for lista in self.bloques.values():
+                    for bloque in lista:
+                        if bloque['id'] == bid:
+                            if json.get('in_trash'):
+                                bloque['in_trash'] = True
+                            if json.get('to_do'):
+                                bloque['to_do'] = json['to_do']
+                            return httpx.Response(200, json=bloque)
+                return httpx.Response(404, json={'message': 'no'})
         if path == '/users':
             return httpx.Response(200, json={'results': [{'id': UID_LAU, 'type': 'person', 'name': 'Lautaro Fuentes', 'person': {'email': 'l@x.com'}}], 'has_more': False})
         raise AssertionError(f'Llamada inesperada {method} {path}')
@@ -300,3 +325,47 @@ def test_sin_acceso_a_la_base_privada_lo_demas_sincroniza(api_client, falso, mon
 
 def _lista(data):
     return data['results'] if isinstance(data, dict) else data
+
+
+def _titulo_bloque(bloque):
+    return ''.join((t.get('text') or {}).get('content', '') for t in bloque['to_do']['rich_text'])
+
+
+def _todos(falso, page_id):
+    return [b for b in falso.bloques.get(page_id, []) if b['type'] == 'to_do' and not b.get('in_trash')]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_subtareas_son_to_do_y_el_eco_no_reaplica(api_client, falso):
+    r = api_client.post('/api/tareas/', {
+        'titulo': 'Subir historia',
+        'subtareas': [{'titulo': f'Historia {i}', 'hecha': False} for i in range(1, 4)],
+    }, format='json')
+    assert r.status_code == 201, r.data
+    tarea = Tarea.objects.get()
+    falso.bloques[tarea.notion_page_id].insert(0, {
+        'id': str(uuid.uuid4()), 'type': 'paragraph', 'in_trash': False,
+        'paragraph': {'rich_text': [{'text': {'content': 'Se conserva'}}]},
+    })
+    assert [_titulo_bloque(b) for b in _todos(falso, tarea.notion_page_id)] == ['Historia 1', 'Historia 2', 'Historia 3']
+
+    for sub in tarea.subtareas.order_by('orden'):
+        assert api_client.patch(f'/api/tareas/{tarea.id}/subtareas/{sub.id}/', {'hecha': True}, format='json').status_code == 200
+    tarea.refresh_from_db()
+    page = falso.paginas[tarea.notion_page_id]
+    assert tarea.estado == 'hecha' and page['properties']['Estado']['select']['name'] == 'Hecha'
+    assert all(b['to_do']['checked'] for b in _todos(falso, tarea.notion_page_id))
+    assert any(b['type'] == 'paragraph' and not b.get('in_trash') for b in falso.bloques[tarea.notion_page_id])
+
+    antes = notion.aplicar_pagina(page)
+    assert antes is None and Tarea.objects.count() == 1
+
+    primero = _todos(falso, tarea.notion_page_id)[0]
+    primero['to_do'] = {**primero['to_do'], 'checked': False}
+    assert notion.aplicar_pagina(page) == 'actualizada'
+    tarea.refresh_from_db()
+    assert tarea.estado == 'en_curso' and tarea.completada_en is None
+    assert [s.hecha for s in tarea.subtareas.order_by('orden')] == [False, True, True]
+    assert page['properties']['Estado']['select']['name'] == 'En progreso'
+    assert notion.aplicar_pagina(falso.paginas[tarea.notion_page_id]) is None
+

@@ -196,7 +196,7 @@ class MiPanelView(APIView):
                 .exclude(estado='hecha')
                 .exclude(etiqueta__in=privadas())
                 .select_related('cliente')
-                .prefetch_related('asignaciones__persona')
+                .prefetch_related('asignaciones__persona', 'subtareas')
                 .distinct()
             )
             liqs = Liquidacion.objects.filter(persona=persona).exclude(estado='anulada').prefetch_related('items').select_related('persona', 'cliente')[:12]

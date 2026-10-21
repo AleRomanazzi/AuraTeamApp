@@ -48,7 +48,7 @@ def seguimiento(fecha, rol=None):
         AsignacionTarea.objects.filter(persona__in=personas)
         .exclude(tarea__estado='hecha', tarea__completada_en__date__lt=desde, tarea__fecha_limite__lt=desde)
         .select_related('tarea', 'tarea__cliente')
-        .prefetch_related('tarea__asignaciones__persona')
+        .prefetch_related('tarea__asignaciones__persona', 'tarea__subtareas')
     )
     por_persona = defaultdict(list)
     for a in asignaciones:

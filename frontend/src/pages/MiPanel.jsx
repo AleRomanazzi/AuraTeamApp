@@ -43,6 +43,7 @@ export default function MiPanel() {
                         <div className="list-row-sub">
                           {t.cliente_nombre ? `${t.cliente_nombre} · ` : ''}
                           <Tag color={PRIORIDADES.find((p) => p.value === t.prioridad)?.tag}>{labelDe(PRIORIDADES, t.prioridad)}</Tag>
+                          {t.progreso?.total ? <span> · {t.progreso.hechas}/{t.progreso.total}</span> : null}
                           {t.fecha_limite ? <span className={t.vencida ? 'down' : ''}> · vence {formatFechaCorta(t.fecha_limite)}</span> : null}
                         </div>
                       </div>

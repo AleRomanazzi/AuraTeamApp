@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
+import ProgressBar from '../ui/ProgressBar'
 import { opcionesEtiqueta, useClientes, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
 import { api } from '../../lib/api'
 import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES } from '../../lib/constants'
@@ -38,10 +39,47 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
     etiqueta: tarea?.etiqueta ?? 'historias',
     asignados: tarea?.asignados ?? [],
     links: tarea?.links ?? [],
+    subtareas: (tarea?.subtareas ?? []).map((s) => ({ ...s, key: s.id })),
   }))
   const [link, setLink] = useState({ titulo: '', url: '' })
+  const [nuevaSub, setNuevaSub] = useState('')
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
   const toggle = (id) => setF((s) => ({ ...s, asignados: s.asignados.includes(id) ? s.asignados.filter((x) => x !== id) : [...s.asignados, id] }))
+
+  const agregarSub = () => {
+    const titulo = nuevaSub.trim()
+    if (!titulo) return
+    setF((s) => ({ ...s, subtareas: [...s.subtareas, { key: `nueva-${s.subtareas.length}-${titulo}`, titulo, hecha: false }] }))
+    setNuevaSub('')
+  }
+
+  const tildar = useMutation({
+    mutationFn: ({ id, hecha }) => api.patch(`tareas/${tarea.id}/subtareas/${id}/`, { hecha }),
+    onSuccess: (r) => {
+      const data = r.data
+      setF((s) => ({
+        ...s,
+        estado: data.estado,
+        subtareas: s.subtareas.map((sub) => {
+          if (!sub.id) return sub
+          const remoto = (data.subtareas || []).find((x) => x.id === sub.id)
+          return remoto ? { ...sub, hecha: remoto.hecha } : sub
+        }),
+      }))
+      invalidar(qc, TAREAS)
+    },
+    onError: (e, vars) => {
+      setF((s) => ({ ...s, subtareas: s.subtareas.map((x) => (x.key === vars.key ? { ...x, hecha: !vars.hecha } : x)) }))
+      notifyError(e, 'No se pudo actualizar la subtarea')
+    },
+  })
+
+  const alternarSub = (sub) => {
+    const hecha = !sub.hecha
+    setF((s) => ({ ...s, subtareas: s.subtareas.map((x) => (x.key === sub.key ? { ...x, hecha } : x)) }))
+    if (!tarea?.id || !sub.id) return
+    tildar.mutate({ id: sub.id, hecha, key: sub.key })
+  }
 
   const agregarLink = () => {
     const url = link.url.trim()
@@ -53,7 +91,17 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
   const guardar = useMutation({
     mutationFn: () => {
       const pendiente = link.url.trim() ? [{ titulo: link.titulo.trim(), url: link.url.trim() }] : []
-      const body = { ...f, links: [...f.links, ...pendiente], cliente: f.cliente || null, fecha_limite: f.fecha_limite || null }
+      const subtareas = f.subtareas
+        .map((s, i) => ({ ...(s.id ? { id: s.id } : {}), titulo: s.titulo.trim(), hecha: Boolean(s.hecha), orden: i }))
+        .filter((s) => s.titulo)
+      const body = {
+        ...f,
+        subtareas,
+        links: [...f.links, ...pendiente],
+        cliente: f.cliente || null,
+        fecha_limite: f.fecha_limite || null,
+      }
+      delete body.key
       if (!puedeReasignar) delete body.asignados
       return nueva ? api.post('tareas/', body) : api.put(`tareas/${tarea.id}/`, body)
     },
@@ -76,6 +124,9 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
   })
 
   const clienteSel = clientes.find((c) => c.id === Number(f.cliente))
+  const hechasSub = f.subtareas.filter((s) => s.hecha).length
+  const totalSub = f.subtareas.length
+  const pctSub = totalSub ? Math.round((100 * hechasSub) / totalSub) : 0
 
   return (
     <Modal
@@ -177,6 +228,66 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
         <Field label="Descripción">
           <textarea rows={4} value={f.descripcion} onChange={set('descripcion')} placeholder="Brief, pasos, observaciones…" />
         </Field>
+
+        <div className="tarea-sheet-label">Subtareas</div>
+        {totalSub ? (
+          <div className="tarea-progreso">
+            <span>
+              {hechasSub}/{totalSub}
+            </span>
+            <span>{pctSub}%</span>
+            <ProgressBar valor={pctSub} color={pctSub === 100 ? 'var(--success)' : 'var(--accent)'} etiqueta="Avance de la tarea" />
+          </div>
+        ) : null}
+        {totalSub ? (
+          <div className="tarea-subtareas">
+            {f.subtareas.map((s) => (
+              <div key={s.key} className="tarea-subtarea">
+                <button
+                  type="button"
+                  className={`tc-check${s.hecha ? ' on' : ''}`}
+                  role="checkbox"
+                  aria-checked={s.hecha}
+                  aria-label={s.hecha ? `Destildar «${s.titulo || 'subtarea'}»` : `Tildar «${s.titulo || 'subtarea'}»`}
+                  disabled={!editable || tildar.isPending}
+                  onClick={() => alternarSub(s)}
+                />
+                <input
+                  value={s.titulo}
+                  onChange={(e) => setF((st) => ({ ...st, subtareas: st.subtareas.map((x) => (x.key === s.key ? { ...x, titulo: e.target.value } : x)) }))}
+                  maxLength={200}
+                  aria-label="Título de la subtarea"
+                  placeholder="Subtarea"
+                />
+                {editable ? (
+                  <button type="button" className="link-btn down" aria-label="Quitar subtarea" onClick={() => setF((st) => ({ ...st, subtareas: st.subtareas.filter((x) => x.key !== s.key) }))}>
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {editable ? (
+          <div className="tarea-link-add tarea-sub-add">
+            <input
+              value={nuevaSub}
+              onChange={(e) => setNuevaSub(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  agregarSub()
+                }
+              }}
+              placeholder="Nueva subtarea"
+              maxLength={200}
+              aria-label="Nueva subtarea"
+            />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={agregarSub} disabled={!nuevaSub.trim()}>
+              + Agregar
+            </button>
+          </div>
+        ) : null}
 
         <div className="tarea-sheet-label">Links</div>
         {f.links.length ? (

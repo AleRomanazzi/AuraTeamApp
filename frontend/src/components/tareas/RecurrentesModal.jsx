@@ -22,6 +22,8 @@ const VACIA = {
   personas: [],
   dias: [0, 1, 2, 3, 4, 5],
   por_dia: 1,
+  agrupar_subtareas: false,
+  titulo_subtarea: "",
   etiqueta: "historias",
   prioridad: "media",
   activa: true,
@@ -138,9 +140,11 @@ export default function RecurrentesModal({ onClose }) {
         <Field
           label="Título"
           hint={
-            Number(f.por_dia) > 1
-              ? `Cada tarea se numera: «${f.titulo || "Título"} 1/${f.por_dia}», «2/${f.por_dia}»…`
-              : null
+            Number(f.por_dia) > 1 && f.agrupar_subtareas
+              ? `Una sola tarea por día, con subtareas «${(f.titulo_subtarea || "Historia").trim() || "Historia"} 1», «${(f.titulo_subtarea || "Historia").trim() || "Historia"} 2»…`
+              : Number(f.por_dia) > 1
+                ? `Cada tarea se numera: «${f.titulo || "Título"} 1/${f.por_dia}», «2/${f.por_dia}»…`
+                : null
           }
         >
           <input
@@ -195,6 +199,26 @@ export default function RecurrentesModal({ onClose }) {
             </select>
           </Field>
         </div>
+        {Number(f.por_dia) > 1 ? (
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={Boolean(f.agrupar_subtareas)}
+              onChange={(e) => setF((s) => ({ ...s, agrupar_subtareas: e.target.checked }))}
+            />
+            Una sola tarea con subtareas
+          </label>
+        ) : null}
+        {Number(f.por_dia) > 1 && f.agrupar_subtareas ? (
+          <Field label="Título de cada subtarea" hint="Se numera al generar: Historia 1, Historia 2…">
+            <input
+              value={f.titulo_subtarea}
+              onChange={set("titulo_subtarea")}
+              maxLength={80}
+              placeholder="Historia"
+            />
+          </Field>
+        ) : null}
         <Field label="Días">
           <div className="chip-select">
             {DIAS_SEMANA.map((d, i) => (
@@ -292,7 +316,7 @@ export default function RecurrentesModal({ onClose }) {
                 >
                   <strong>{p.titulo}</strong>
                   <span className="muted small">
-                    {p.por_dia} por día · {diasTexto(p.dias)} ·{" "}
+                    {p.por_dia} por día{p.agrupar_subtareas ? " · con subtareas" : ""} · {diasTexto(p.dias)} ·{" "}
                     {labelDe(etiquetas, p.etiqueta)}
                     {p.personas.length
                       ? ` · ${p.personas.map((id) => personas.find((x) => x.id === id)?.nombre ?? "?").join(", ")}`

@@ -84,7 +84,7 @@ class TareaPermission(permissions.BasePermission):
             return False
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
             return True
-        return view.action in ('create', 'update', 'partial_update', 'plan')
+        return view.action in ('create', 'update', 'partial_update', 'plan', 'subtarea')
 
     def has_object_permission(self, request, view, obj):
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
@@ -97,7 +97,7 @@ class TareaViewSet(viewsets.ModelViewSet):
     permission_classes = [TareaPermission]
 
     def get_queryset(self):
-        qs = Tarea.objects.select_related('cliente', 'aviso_servicio').prefetch_related('asignaciones__persona')
+        qs = Tarea.objects.select_related('cliente', 'aviso_servicio').prefetch_related('asignaciones__persona', 'subtareas')
         if not es_admin(self.request.user):
             qs = qs.exclude(etiqueta__in=etiquetas.privadas())
             # Las tareas de pagos y aportes de servicios (con montos) solo las ve su responsable.
@@ -120,6 +120,20 @@ class TareaViewSet(viewsets.ModelViewSet):
         cron.respaldo()
         return super().list(request, *args, **kwargs)
 
+    def _efectos(self, tarea, estado_anterior, user, antes_asignados=None):
+        notion.al_guardar_tarea(tarea)
+        google_calendar.al_guardar_tarea(tarea)
+        if antes_asignados is not None:
+            nuevas = set(tarea.asignaciones.values_list('persona_id', flat=True)) - antes_asignados
+            avisos.al_asignar(tarea, list(nuevas), user)
+        if estado_anterior != tarea.estado:
+            avisos.al_cambiar_estado(tarea, estado_anterior, user)
+        if tarea.estado == 'hecha' and estado_anterior != 'hecha':
+            try:
+                servicios_al_completar(tarea, user)
+            except Exception:
+                logger.exception('No se pudo registrar el pago del servicio de la tarea %s', tarea.pk)
+
     def perform_create(self, serializer):
         user = self.request.user
         tarea = serializer.save(user=user)
@@ -129,6 +143,11 @@ class TareaViewSet(viewsets.ModelViewSet):
         notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
         avisos.al_asignar(tarea, list(tarea.asignaciones.values_list('persona_id', flat=True)), user)
+        if tarea.estado == 'hecha':
+            try:
+                servicios_al_completar(tarea, user)
+            except Exception:
+                logger.exception('No se pudo registrar el pago del servicio de la tarea %s', tarea.pk)
 
     def perform_update(self, serializer):
         user, tarea = self.request.user, serializer.instance
@@ -140,16 +159,28 @@ class TareaViewSet(viewsets.ModelViewSet):
         antes = set(tarea.asignaciones.values_list('persona_id', flat=True))
         estado_anterior = tarea.estado
         tarea = serializer.save()
-        notion.al_guardar_tarea(tarea)
-        google_calendar.al_guardar_tarea(tarea)
-        nuevas = set(tarea.asignaciones.values_list('persona_id', flat=True)) - antes
-        avisos.al_asignar(tarea, list(nuevas), user)
-        avisos.al_cambiar_estado(tarea, estado_anterior, user)
-        if tarea.estado == 'hecha' and estado_anterior != 'hecha':
-            try:
-                servicios_al_completar(tarea, user)
-            except Exception:
-                logger.exception('No se pudo registrar el pago del servicio de la tarea %s', tarea.pk)
+        self._efectos(tarea, estado_anterior, user, antes)
+
+    @action(detail=True, methods=['patch'], url_path=r'subtareas/(?P<sub_id>[0-9]+)')
+    def subtarea(self, request, pk=None, sub_id=None):
+        """Tilda o destilda una subtarea al instante y ajusta el estado de la tarea."""
+        tarea = self.get_object()
+        sub = tarea.subtareas.filter(pk=sub_id).first()
+        if sub is None:
+            return Response({'detail': 'Esa subtarea no existe.'}, status=status.HTTP_404_NOT_FOUND)
+        hecha = request.data.get('hecha')
+        if not isinstance(hecha, bool):
+            return Response({'hecha': 'Indicá si está hecha.'}, status=status.HTTP_400_BAD_REQUEST)
+        estado_anterior = tarea.estado
+        if sub.hecha != hecha:
+            sub.hecha = hecha
+            sub.save(update_fields=['hecha'])
+            tarea._checklist_tocado = True
+            services.fijar_estado(tarea, services.estado_segun_subtareas(tarea, tarea.estado))
+            self._efectos(tarea, estado_anterior, request.user)
+        if hasattr(tarea, '_prefetched_objects_cache'):
+            tarea._prefetched_objects_cache.clear()
+        return Response(self.get_serializer(tarea).data)
 
     @action(detail=False, methods=['post'])
     def plan(self, request):

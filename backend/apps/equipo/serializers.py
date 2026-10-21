@@ -11,11 +11,12 @@ from apps.clientes.models import Cliente
 from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
-from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Tarea, TareaRecurrente
+from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Subtarea, Tarea, TareaRecurrente
 
 MAX_LINKS_TAREA = 20
 MAX_POR_DIA = 10
 MAX_TAREAS_PLAN = 100
+MAX_SUBTAREAS = 30
 
 
 def es_interna(tarea) -> bool:
@@ -32,6 +33,13 @@ def puede_editar_tarea(user, tarea) -> bool:
     return persona is not None and any(a.persona_id == persona.id for a in tarea.asignaciones.all())
 
 
+class SubtareaSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False)
+    titulo = serializers.CharField(max_length=200)
+    hecha = serializers.BooleanField(required=False, default=False)
+    orden = serializers.IntegerField(required=False, min_value=0)
+
+
 class TareaSerializer(serializers.ModelSerializer):
     asignados = serializers.PrimaryKeyRelatedField(
         many=True, required=False, queryset=Persona.objects.all(), source='personas_asignadas'
@@ -40,13 +48,15 @@ class TareaSerializer(serializers.ModelSerializer):
     cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True, default=None)
     cliente_color = serializers.CharField(source='cliente.color', read_only=True, default=None)
     vencida = serializers.SerializerMethodField()
+    subtareas = SubtareaSerializer(many=True, required=False)
+    progreso = serializers.SerializerMethodField()
 
     class Meta:
         model = Tarea
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
             'fecha_limite', 'etiqueta', 'links', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
-            'notion_url', 'creado_por', 'puede_editar', 'recurrente',
+            'notion_url', 'creado_por', 'puede_editar', 'recurrente', 'subtareas', 'progreso',
         )
         read_only_fields = ('id', 'completada_en', 'creado', 'recurrente')
 
@@ -72,6 +82,33 @@ class TareaSerializer(serializers.ModelSerializer):
 
     def get_vencida(self, obj):
         return bool(obj.fecha_limite and obj.estado != 'hecha' and obj.fecha_limite < timezone.localdate())
+
+    def get_progreso(self, obj):
+        subtareas = list(obj.subtareas.all())
+        if not subtareas:
+            return None
+        hechas = sum(1 for s in subtareas if s.hecha)
+        total = len(subtareas)
+        return {'hechas': hechas, 'total': total, 'porcentaje': round(100 * hechas / total)}
+
+    def validate_subtareas(self, value):
+        if len(value) > MAX_SUBTAREAS:
+            raise serializers.ValidationError(f'Máximo {MAX_SUBTAREAS} subtareas.')
+        vistos = set()
+        for item in value:
+            item['titulo'] = item['titulo'].strip()
+            if not item['titulo']:
+                raise serializers.ValidationError('Cada subtarea necesita un título.')
+            sid = item.get('id')
+            if sid is not None:
+                if sid in vistos:
+                    raise serializers.ValidationError('Hay subtareas repetidas.')
+                vistos.add(sid)
+        if self.instance is not None and vistos:
+            existentes = set(self.instance.subtareas.filter(id__in=vistos).values_list('id', flat=True))
+            if vistos - existentes:
+                raise serializers.ValidationError('Hay una subtarea que no es de esta tarea.')
+        return value
 
     def validate_titulo(self, value):
         value = value.strip()
@@ -114,18 +151,63 @@ class TareaSerializer(serializers.ModelSerializer):
         elif estado != 'hecha':
             validated['completada_en'] = None
 
+    def _reemplazar_subtareas(self, tarea, items):
+        actuales = {s.id: s for s in tarea.subtareas.all()}
+        antes = [s.hecha for s in tarea.subtareas.all()]
+        vistos = []
+        for i, item in enumerate(items):
+            orden = item.get('orden', i)
+            sid = item.get('id')
+            if sid and tarea.pk and sid in actuales:
+                sub = actuales[sid]
+                sub.titulo = item['titulo']
+                sub.hecha = item['hecha']
+                sub.orden = orden
+                sub.save(update_fields=['titulo', 'hecha', 'orden'])
+                vistos.append(sid)
+            else:
+                Subtarea.objects.create(tarea=tarea, titulo=item['titulo'], hecha=item['hecha'], orden=orden)
+        sobrantes = [sid for sid in actuales if sid not in vistos]
+        if sobrantes:
+            Subtarea.objects.filter(id__in=sobrantes).delete()
+        tarea._checklist_tocado = True
+        if hasattr(tarea, '_prefetched_objects_cache'):
+            tarea._prefetched_objects_cache.pop('subtareas', None)
+        despues = [s.hecha for s in tarea.subtareas.all()]
+        return antes != despues
+
+    def _cerrar_progreso(self, tarea, estado_anterior, cambio_hecha):
+        if tarea.estado == 'hecha' and estado_anterior != 'hecha':
+            tarea.subtareas.filter(hecha=False).update(hecha=True)
+            return
+        if not cambio_hecha:
+            return
+        from .services import estado_segun_subtareas, fijar_estado
+
+        if hasattr(tarea, '_prefetched_objects_cache'):
+            tarea._prefetched_objects_cache.pop('subtareas', None)
+        fijar_estado(tarea, estado_segun_subtareas(tarea, tarea.estado))
+
     @transaction.atomic
     def create(self, validated_data):
         personas = validated_data.pop('personas_asignadas', [])
+        subtareas = validated_data.pop('subtareas', None)
+        pedido = validated_data.get('estado', 'pendiente')
         self._aplicar_estado(validated_data)
         tarea = Tarea.objects.create(**validated_data)
         for p in personas:
             AsignacionTarea.objects.create(persona=p, tarea=tarea)
+        cambio = False
+        if subtareas is not None:
+            cambio = self._reemplazar_subtareas(tarea, subtareas)
+        self._cerrar_progreso(tarea, 'pendiente' if pedido == 'hecha' else tarea.estado, cambio)
         return tarea
 
     @transaction.atomic
     def update(self, instance, validated_data):
         personas = validated_data.pop('personas_asignadas', None)
+        subtareas = validated_data.pop('subtareas', None)
+        estado_anterior = instance.estado
         self._aplicar_estado(validated_data, instance)
         for k, v in validated_data.items():
             setattr(instance, k, v)
@@ -137,6 +219,8 @@ class TareaSerializer(serializers.ModelSerializer):
             for p in personas:
                 if p.id not in actuales:
                     AsignacionTarea.objects.create(persona=p, tarea=instance)
+        cambio = self._reemplazar_subtareas(instance, subtareas) if subtareas is not None else False
+        self._cerrar_progreso(instance, estado_anterior, cambio)
         if hasattr(instance, '_prefetched_objects_cache'):
             instance._prefetched_objects_cache.clear()
         return instance
@@ -182,7 +266,7 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
         model = TareaRecurrente
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'personas', 'dias', 'por_dia',
-            'etiqueta', 'prioridad', 'activa', 'generada_hasta', 'creado',
+            'agrupar_subtareas', 'titulo_subtarea', 'etiqueta', 'prioridad', 'activa', 'generada_hasta', 'creado',
         )
         read_only_fields = ('id', 'generada_hasta', 'creado')
 
@@ -191,6 +275,9 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('El título es obligatorio.')
         return value
+
+    def validate_titulo_subtarea(self, value):
+        return (value or '').strip()
 
     validate_etiqueta = TareaSerializer.validate_etiqueta
 

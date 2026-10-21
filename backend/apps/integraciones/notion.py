@@ -7,7 +7,9 @@ con los socios; si cambian de etiqueta, su página se mueve de base.
 - Notion → Panel: llega por webhook y, como respaldo, por una consulta incremental (throttled) y una completa manual.
 - Para no reaplicar ecos propios se guarda en cada tarea una huella de los campos sincronizados.
 
-Los nombres de propiedades y opciones deben coincidir con los de Notion (ver la página «Coordinación Claude ↔ Cursor»).
+Las subtareas van como bloques `to_do` del cuerpo de la página; la propiedad Notas sigue siendo la descripción.
+Los demás bloques no se tocan. Los nombres de propiedades y opciones deben coincidir con los de Notion
+(ver la página «Coordinación Claude ↔ Cursor»). Un fallo de Notion nunca debe impedir guardar en el panel.
 """
 
 import hashlib
@@ -28,7 +30,8 @@ from django.utils import timezone
 
 from apps.calendario.etiquetas import privadas as etiquetas_privadas
 from apps.clientes.models import Cliente
-from apps.equipo.models import AsignacionTarea, Persona, Tarea
+from apps.equipo.models import AsignacionTarea, Persona, Subtarea, Tarea
+from apps.equipo.services import estado_segun_subtareas, fijar_estado
 
 from .models import EstadoNotion
 
@@ -179,6 +182,13 @@ def _datos_pagina(page, privada=False) -> dict:
     return datos
 
 
+def _marcas(tarea: Tarea) -> list:
+    # El listado deja las subtareas en caché: un tildado posterior no se vería.
+    if hasattr(tarea, '_prefetched_objects_cache'):
+        tarea._prefetched_objects_cache.pop('subtareas', None)
+    return [[s.titulo.strip()[:200], bool(s.hecha)] for s in tarea.subtareas.all()]
+
+
 def _datos_tarea(tarea: Tarea, privada=False) -> dict:
     uids = Persona.objects.filter(asignaciones__tarea=tarea).exclude(notion_user_id='').values_list('notion_user_id', flat=True)
     cliente = tarea.cliente if tarea.cliente_id else None
@@ -187,10 +197,14 @@ def _datos_tarea(tarea: Tarea, privada=False) -> dict:
         'descripcion': tarea.descripcion,
         'estado': tarea.estado,
         'prioridad': tarea.prioridad,
-        'fecha_limite': tarea.fecha_limite.isoformat() if tarea.fecha_limite else None,
         'cliente': [_norm(cliente.notion_page_id)] if cliente and cliente.notion_page_id else [],
         'personas': sorted(_norm(u) for u in uids),
     }
+    fecha = tarea.fecha_limite
+    datos['fecha_limite'] = fecha.isoformat() if hasattr(fecha, 'isoformat') else (fecha or None)
+    marcas = _marcas(tarea)
+    if marcas:
+        datos['subtareas'] = marcas
     if privada:
         datos['privada'] = True
     return datos
@@ -210,6 +224,117 @@ def _propiedades(d: dict) -> dict:
         P_CLIENTE: {'relation': [{'id': x} for x in d['cliente']]},
         P_RESPONSABLE: {'people': [{'id': x} for x in d['personas']]},
     }
+
+
+def _texto_rico(rich) -> str:
+    return ''.join(t.get('plain_text') or ((t.get('text') or {}).get('content') or '') for t in rich or []).strip()
+
+
+def _bloques_todo(page_id) -> list:
+    """Checkboxes del cuerpo, en orden. El resto de los bloques no entra."""
+    bloques, params = [], {'page_size': 100}
+    while True:
+        data = _request('GET', f'/blocks/{page_id}/children', params=params)
+        for bloque in data.get('results', []):
+            if bloque.get('type') != 'to_do' or bloque.get('in_trash') or bloque.get('archived'):
+                continue
+            titulo = _texto_rico((bloque.get('to_do') or {}).get('rich_text'))[:200]
+            if not titulo:
+                continue
+            bloques.append({
+                'id': _norm(bloque['id']),
+                'titulo': titulo,
+                'hecha': bool((bloque.get('to_do') or {}).get('checked')),
+            })
+        if not data.get('has_more'):
+            return bloques
+        params['start_cursor'] = data['next_cursor']
+
+
+def _sincronizar_bloques(tarea: Tarea, page_id):
+    """Crea, actualiza o archiva solo los to_do para que coincidan con las subtareas."""
+    if hasattr(tarea, '_prefetched_objects_cache'):
+        tarea._prefetched_objects_cache.pop('subtareas', None)
+    actuales = _bloques_todo(page_id)
+    subs = list(tarea.subtareas.all())
+    ids_pagina = [b['id'] for b in actuales]
+    ids_subs = [s.notion_block_id for s in subs]
+    if subs and ids_subs == ids_pagina and all(ids_subs):
+        for sub, bloque in zip(subs, actuales):
+            if sub.titulo != bloque['titulo'] or sub.hecha != bloque['hecha']:
+                _request('PATCH', f'/blocks/{sub.notion_block_id}', {
+                    'to_do': {'rich_text': _rich(sub.titulo), 'checked': sub.hecha},
+                })
+        return
+    for bloque in actuales:
+        try:
+            _request('PATCH', f'/blocks/{bloque["id"]}', {'in_trash': True})
+        except NoEncontrada:
+            pass
+    if not subs:
+        return
+    resp = _request('POST', f'/blocks/{page_id}/children', {
+        'children': [
+            {'object': 'block', 'type': 'to_do', 'to_do': {'rich_text': _rich(s.titulo), 'checked': s.hecha}}
+            for s in subs
+        ],
+    })
+    resultados = resp.get('results') or []
+    if len(resultados) != len(subs):
+        raise NotionError('Notion no devolvió todas las subtareas.')
+    for sub, bloque in zip(subs, resultados):
+        sub.notion_block_id = _norm(bloque['id'])
+    Subtarea.objects.bulk_update(subs, ['notion_block_id'])
+
+
+def _aplicar_checklist(tarea: Tarea, bloques: list):
+    """Copia los to_do a las subtareas. No borra las que el panel todavía no subió."""
+    actuales = list(tarea.subtareas.all())
+    por_bloque = {s.notion_block_id: s for s in actuales if s.notion_block_id}
+    locales = [s for s in actuales if not s.notion_block_id]
+    antes = [(s.notion_block_id, s.hecha) for s in actuales if s.notion_block_id]
+    ids = set()
+    for i, bloque in enumerate(bloques):
+        sub = por_bloque.get(bloque['id'])
+        if sub is None and locales:
+            sub = next((s for s in locales if s.titulo == bloque['titulo']), locales[0])
+            locales.remove(sub)
+        if sub is None:
+            sub = Subtarea.objects.create(
+                tarea=tarea, titulo=bloque['titulo'], hecha=bloque['hecha'], orden=i, notion_block_id=bloque['id'],
+            )
+        else:
+            sub.titulo = bloque['titulo']
+            sub.hecha = bloque['hecha']
+            sub.orden = i
+            sub.notion_block_id = bloque['id']
+            sub.save(update_fields=['titulo', 'hecha', 'orden', 'notion_block_id'])
+        ids.add(sub.id)
+    for j, sub in enumerate(locales):
+        if sub.orden != len(bloques) + j:
+            sub.orden = len(bloques) + j
+            sub.save(update_fields=['orden'])
+    sobrantes = [s.pk for s in actuales if s.notion_block_id and s.notion_block_id not in {b['id'] for b in bloques} and s.id not in ids]
+    if sobrantes:
+        Subtarea.objects.filter(pk__in=sobrantes).delete()
+    if hasattr(tarea, '_prefetched_objects_cache'):
+        tarea._prefetched_objects_cache.pop('subtareas', None)
+    return antes != [(b['id'], b['hecha']) for b in bloques] or bool(sobrantes)
+
+
+def _empujar_si_difiere(tarea: Tarea, datos: dict):
+    """Si al aplicar la página el panel quedó distinto (por ejemplo, todas tildadas), lo devuelve a Notion."""
+    if _huella(_datos_tarea(tarea, 'privada' in datos)) == _huella(datos):
+        return
+    pk = tarea.pk
+
+    def enviar(pk=pk):
+        t = Tarea.objects.filter(pk=pk).first()
+        if t is not None:
+            t._checklist_tocado = True
+            al_guardar_tarea(t)
+
+    transaction.on_commit(enviar)
 
 
 # --- Panel → Notion --------------------------------------------------------------------------------------------------
@@ -247,6 +372,9 @@ def enviar_tarea(tarea: Tarea):
         page_id = _norm(page['id'])
         # El webhook de la página recién creada puede llegar antes de guardar el vínculo y crear un eco: se descarta.
         Tarea.objects.filter(notion_page_id=page_id).exclude(pk=tarea.pk).delete()
+    if page_id and (getattr(tarea, '_checklist_tocado', False) or tarea.subtareas.exists()):
+        _sincronizar_bloques(tarea, page_id)
+        datos = _datos_tarea(tarea, privada)
     tarea.notion_page_id = page_id
     tarea.notion_huella = _huella(datos) if page_id else ''
     tarea.notion_privada = privada
@@ -312,7 +440,10 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
             tarea.delete()
             return 'borrada'
         return None
+    bloques = _bloques_todo(pid)
     datos = _datos_pagina(page, privada)
+    if bloques:
+        datos['subtareas'] = [[b['titulo'], b['hecha']] for b in bloques]
     if not datos['titulo']:
         return None
     huella = _huella(datos)
@@ -360,6 +491,14 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
         tarea.notion_huella = huella
         tarea.save()
         _aplicar_responsables(tarea, datos['personas'])
+        # Si el checklist cambió, manda él (todas hechas → hecha; destildar una hecha → en curso).
+        # Si no cambió y en Notion la pasaron a Hecha, se tildan todas.
+        cambio = _aplicar_checklist(tarea, bloques)
+        if datos['estado'] == 'hecha' and anterior != 'hecha':
+            tarea.subtareas.filter(hecha=False).update(hecha=True)
+        elif cambio:
+            fijar_estado(tarea, estado_segun_subtareas(tarea, tarea.estado))
+        _empujar_si_difiere(tarea, datos)
     if anterior and anterior != tarea.estado:
         from apps.notificaciones.services import al_cambiar_estado
 

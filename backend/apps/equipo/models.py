@@ -81,8 +81,27 @@ class Tarea(models.Model):
         return self.titulo
 
 
+class Subtarea(models.Model):
+    """Ítem tildable de una tarea. El avance (y, si se completan todas, el estado) sale de estas filas."""
+
+    tarea = models.ForeignKey(Tarea, on_delete=models.CASCADE, related_name='subtareas')
+    titulo = models.CharField(max_length=200)
+    hecha = models.BooleanField(default=False)
+    orden = models.PositiveSmallIntegerField(default=0)
+    notion_block_id = models.CharField(max_length=36, blank=True)
+
+    class Meta:
+        ordering = ['orden', 'id']
+
+    def __str__(self):
+        return self.titulo
+
+
 class TareaRecurrente(models.Model):
-    """Plantilla que genera sola sus tareas: `por_dia` tareas en cada día de `dias` (0 = lunes)."""
+    """Plantilla que genera sola sus tareas: `por_dia` tareas en cada día de `dias` (0 = lunes).
+
+    Con `agrupar_subtareas`, en cada día crea una sola tarea y `por_dia` subtareas.
+    """
 
     titulo = models.CharField(max_length=180)
     descripcion = models.TextField(blank=True)
@@ -90,6 +109,9 @@ class TareaRecurrente(models.Model):
     personas = models.ManyToManyField(Persona, blank=True, related_name='recurrentes')
     dias = models.JSONField(default=list)
     por_dia = models.PositiveSmallIntegerField(default=1)
+    # Apagado: cada una es una tarea («Título 1/3»). Prendido: una tarea con subtareas «Historia 1»…
+    agrupar_subtareas = models.BooleanField(default=False)
+    titulo_subtarea = models.CharField(max_length=80, blank=True)
     etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
     activa = models.BooleanField(default=True)

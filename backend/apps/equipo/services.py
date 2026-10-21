@@ -3,12 +3,13 @@ from datetime import date, timedelta
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.core.utils import today
 from apps.finanzas.models import CATEGORIA_HONORARIOS, Categoria, Transaccion
 
-from .models import AsignacionTarea, Liquidacion, Tarea, TareaRecurrente
+from .models import AsignacionTarea, Liquidacion, Subtarea, Tarea, TareaRecurrente
 
 # Las recurrentes cubren hasta fin del mes en que cae hoy + DIAS_RECURRENTES (así el mes siguiente queda armado desde
 # su última semana). Notion y Google las reciben de a tandas en las siguientes sincronizaciones.
@@ -36,15 +37,28 @@ def generar_recurrentes() -> int:
             dia = max(p.generada_hasta + timedelta(days=1), hoy) if p.generada_hasta else hoy
             while dia <= hasta:
                 if dia.weekday() in p.dias:
-                    for i in range(1, p.por_dia + 1):
+                    if p.agrupar_subtareas and p.por_dia > 1:
                         tarea = Tarea.objects.create(
-                            titulo=f'{p.titulo} {i}/{p.por_dia}' if p.por_dia > 1 else p.titulo,
-                            descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
+                            titulo=p.titulo, descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
                             etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
                         )
+                        prefijo = (p.titulo_subtarea or '').strip() or 'Historia'
+                        Subtarea.objects.bulk_create([
+                            Subtarea(tarea=tarea, titulo=f'{prefijo} {i}', orden=i) for i in range(1, p.por_dia + 1)
+                        ])
                         AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=x, tarea=tarea) for x in personas])
                         nuevas.append(tarea)
                         creadas += 1
+                    else:
+                        for i in range(1, p.por_dia + 1):
+                            tarea = Tarea.objects.create(
+                                titulo=f'{p.titulo} {i}/{p.por_dia}' if p.por_dia > 1 else p.titulo,
+                                descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
+                                etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
+                            )
+                            AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=x, tarea=tarea) for x in personas])
+                            nuevas.append(tarea)
+                            creadas += 1
                 dia += timedelta(days=1)
             TareaRecurrente.objects.filter(pk=p.pk).update(generada_hasta=hasta)
     if nuevas:
@@ -52,6 +66,35 @@ def generar_recurrentes() -> int:
 
         asignadas_en_tanda(nuevas, 'recurrentes')
     return creadas
+
+
+def estado_segun_subtareas(tarea, estado):
+    """Tras tildar o destildar: todas hechas pasa a hecha; si estaba hecha y ya no, vuelve a en curso.
+
+    Bloqueada, en revisión y el resto no se pisan mientras no se cruce ese umbral.
+    """
+    marcas = list(tarea.subtareas.values_list('hecha', flat=True))
+    if not marcas:
+        return estado
+    if all(marcas):
+        return 'hecha'
+    if estado == 'hecha':
+        return 'en_curso'
+    return estado
+
+
+def fijar_estado(tarea, estado):
+    """Deja estado y completada_en coherentes. Devuelve True si cambió el estado."""
+    if estado == tarea.estado:
+        return False
+    anterior = tarea.estado
+    tarea.estado = estado
+    if estado == 'hecha' and anterior != 'hecha':
+        tarea.completada_en = timezone.now()
+    elif estado != 'hecha':
+        tarea.completada_en = None
+    tarea.save(update_fields=['estado', 'completada_en'])
+    return True
 
 
 @transaction.atomic

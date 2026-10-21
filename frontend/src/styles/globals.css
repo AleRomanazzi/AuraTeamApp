@@ -344,6 +344,17 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .tarea-sheet-titulo:focus { outline: none; border-bottom-color: var(--accent); box-shadow: none; }
 .tarea-sheet-label { font-size: 10px; font-weight: 500; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-dim); margin: 16px 0 8px; }
 .tarea-sheet-grid { margin-top: 16px; }
+.tarea-progreso { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+.tarea-progreso .progress-bar { flex: 1; margin-top: 0; min-width: 72px; }
+.tarea-subtareas { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.tarea-subtarea { display: flex; align-items: center; gap: 8px; }
+.tarea-subtarea input { flex: 1; min-height: 34px; }
+.tarea-sub-add { grid-template-columns: minmax(0, 1fr) auto; }
+.tc-check.on { border-color: var(--success); background: var(--success); }
+.tc-check.on::after { content: '✓'; position: absolute; inset: 0; display: grid; place-items: center; color: #060b14; font-size: 13px; font-weight: 700; }
+.tc-check.on:hover:not(:disabled) { background: var(--success); }
+.tc-check.on:hover:not(:disabled)::after { color: #060b14; }
+.tc-progreso { font-variant-numeric: tabular-nums; }
 .chip-estado.active.chip-estado--purple { border-color: var(--accent); color: var(--accent-soft); }
 .chip-estado.active.chip-estado--red { border-color: var(--accent3); color: var(--accent3); background: rgba(248, 113, 113, 0.1); }
 .chip-estado.active.chip-estado--yellow { border-color: var(--gold); color: var(--gold); background: rgba(251, 191, 36, 0.1); }

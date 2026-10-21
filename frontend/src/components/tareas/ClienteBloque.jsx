@@ -78,6 +78,11 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
                   <span className="tc-tarea-meta">
                     <span className={`tag tag-${est?.tag || 'neutral'}`}>{est?.label}</span>
                     {fechaTarea(t, hoy)}
+                    {t.progreso?.total ? (
+                      <span className="tc-progreso" title={`${t.progreso.porcentaje}%`}>
+                        {t.progreso.hechas}/{t.progreso.total}
+                      </span>
+                    ) : null}
                     {t.links?.length ? <span className="muted">🔗 {t.links.length}</span> : null}
                   </span>
                 </button>

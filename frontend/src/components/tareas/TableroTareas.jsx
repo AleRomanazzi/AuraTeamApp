@@ -54,6 +54,7 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
                 {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
                 <div className="task-card-meta">
                   <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatFechaCorta(t.fecha_limite)}` : 'Sin fecha'}</span>
+                  {t.progreso?.total ? <span title={`${t.progreso.porcentaje}%`}>{t.progreso.hechas}/{t.progreso.total}</span> : null}
                   {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
                   {t.links?.length ? <span>🔗 {t.links.length}</span> : null}
                 </div>

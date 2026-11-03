@@ -369,3 +369,37 @@ def test_etiqueta_inexistente_o_calendario_borrado(api_client, gcal):
     _incremental()
     assert CalendarioGoogle.objects.get(etiqueta='marketing').oculta
     assert 'marketing' not in [e['valor'] for e in api_client.get('/api/calendario/etiquetas/').data]
+
+
+@pytest.mark.django_db
+def test_mover_el_evento_de_una_tarea_en_google_le_cambia_la_fecha(api_client, gcal, clientes, monkeypatch):
+    enviadas = []
+    monkeypatch.setattr('apps.integraciones.notion.al_guardar_tarea', lambda t: enviadas.append(t.pk))
+    google_calendar.sincronizar()
+    hoy = timezone.localdate()
+    r = api_client.post('/api/tareas/', {'titulo': 'Editar reels', 'fecha_limite': (hoy + timedelta(days=3)).isoformat()}, format='json')
+    tarea = Tarea.objects.get(pk=r.data['id'])
+    assert _incremental().get('tareas_movidas') is None
+
+    # Arrastrado a otro día y estirado a dos días.
+    gcal.editar('ops@group', tarea.google_event_id, start={'date': (hoy + timedelta(days=5)).isoformat()},
+                end={'date': (hoy + timedelta(days=7)).isoformat()})
+    assert _incremental()['tareas_movidas'] == 1
+    tarea.refresh_from_db()
+    assert (tarea.fecha_inicio, tarea.fecha_limite) == (hoy + timedelta(days=5), hoy + timedelta(days=6))
+    assert tarea.pk in enviadas
+    assert _incremental().get('tareas_movidas') is None  # el eco no reaplica
+
+    # Pasado a un horario.
+    dia = (hoy + timedelta(days=6)).isoformat()
+    gcal.editar('ops@group', tarea.google_event_id, start={'dateTime': f'{dia}T09:00:00-03:00'}, end={'dateTime': f'{dia}T11:30:00-03:00'})
+    _incremental()
+    tarea.refresh_from_db()
+    assert (tarea.fecha_inicio, str(tarea.hora_inicio), str(tarea.hora_fin)) == (None, '09:00:00', '11:30:00')
+
+    # Si el panel tiene un cambio sin subir, manda el panel.
+    Tarea.objects.filter(pk=tarea.pk).update(google_huella='vieja')
+    gcal.editar('ops@group', tarea.google_event_id, start={'date': dia}, end={'date': dia})
+    google_calendar._traer({}, timezone.now())
+    tarea.refresh_from_db()
+    assert str(tarea.hora_inicio) == '09:00:00'

@@ -25,9 +25,11 @@ function mismoDiaDeSemana(fecha, mes) {
 }
 
 const clave = (fecha, titulo) => `${fecha}|${titulo.trim().toLowerCase()}`
+// Orden de envío: por fecha y, el mismo día, por orden de carga. Una fila solo puede ir después de una anterior.
+const ordenar = (filas) => [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha) || a.key - b.key)
 
 let siguiente = 0
-const fila = (datos) => ({ key: ++siguiente, incluir: true, descripcion: '', prioridad: 'media', ...datos })
+const fila = (datos) => ({ key: ++siguiente, incluir: true, descripcion: '', prioridad: 'media', despues: null, ...datos })
 
 /** Varias tareas de un cliente de una vez: carga rápida por días o copia del mes anterior, editable antes de crear. */
 export default function PlanMesModal({ cliente, tareas, onClose }) {
@@ -55,10 +57,16 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
 
   const copiarAnterior = () => {
     const usadas = new Set([...existentes, ...borrador.map((f) => clave(f.fecha, f.titulo))])
-    const nuevas = anterior
+    const copiadas = anterior
       .map((t) => ({ ...t, fecha: mismoDiaDeSemana(t.fecha_limite, mes) }))
       .filter((t) => !usadas.has(clave(t.fecha, t.titulo)))
-      .map((t) => fila({ fecha: t.fecha, titulo: t.titulo, etiqueta: t.etiqueta, prioridad: t.prioridad, descripcion: t.descripcion, asignados: t.asignados }))
+    const nuevas = copiadas.map((t) => fila({ fecha: t.fecha, titulo: t.titulo, etiqueta: t.etiqueta, prioridad: t.prioridad, descripcion: t.descripcion, asignados: t.asignados }))
+    // Las cadenas del mes anterior se copian si las dos tareas entran en la copia.
+    const keyDe = new Map(copiadas.map((t, i) => [t.id, nuevas[i].key]))
+    copiadas.forEach((t, i) => {
+      const previa = (t.depende_de ?? []).map((id) => keyDe.get(id)).find(Boolean)
+      if (previa) nuevas[i].despues = previa
+    })
     if (!nuevas.length) return notify('Esas tareas ya están en el borrador o cargadas en el mes.', 'error')
     setBorrador((b) => [...b, ...nuevas])
   }
@@ -82,18 +90,25 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
   const alternarEn = (lista, v) => (lista.includes(v) ? lista.filter((x) => x !== v) : [...lista, v])
 
   const crear = useMutation({
-    mutationFn: () =>
-      api.post('tareas/plan/', {
+    mutationFn: () => {
+      const enviadas = ordenar(incluidas)
+      const posicion = new Map(enviadas.map((f, i) => [f.key, i]))
+      return api.post('tareas/plan/', {
         cliente: cliente.id,
-        tareas: incluidas.map((f) => ({
-          titulo: f.titulo,
-          fecha_limite: f.fecha,
-          etiqueta: f.etiqueta,
-          prioridad: f.prioridad,
-          descripcion: f.descripcion,
-          asignados: f.asignados,
-        })),
-      }),
+        tareas: enviadas.map((f, i) => {
+          const previa = f.despues ? posicion.get(f.despues) : undefined
+          return {
+            titulo: f.titulo,
+            fecha_limite: f.fecha,
+            etiqueta: f.etiqueta,
+            prioridad: f.prioridad,
+            descripcion: f.descripcion,
+            asignados: f.asignados,
+            despues_de: previa !== undefined && previa < i ? previa : null,
+          }
+        }),
+      })
+    },
     onSuccess: ({ data }) => {
       invalidar(qc, [...TAREAS, 'notion', 'cal-google'])
       notify(`Se crearon ${data.creadas} tareas. Van llegando a Notion y al calendario.`)
@@ -244,10 +259,9 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
             </button>
           </div>
           <div className="plan-borrador">
-            {[...borrador]
-              .sort((a, b) => a.fecha.localeCompare(b.fecha))
-              .map((f) => {
+            {ordenar(borrador).map((f, i, lista) => {
                 const repetida = existentes.has(clave(f.fecha, f.titulo))
+                const previas = lista.slice(0, i).filter((x) => x.incluir)
                 return (
                   <div key={f.key} className={`plan-fila${f.incluir ? '' : ' plan-fila--fuera'}`}>
                     <input type="checkbox" aria-label="Incluir" checked={f.incluir} onChange={(e) => editar(f.key, { incluir: e.target.checked })} />
@@ -260,6 +274,20 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
                       {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                         <option key={e.value} value={e.value}>
                           {e.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className="select-sm"
+                      aria-label="Después de"
+                      title="La tarea nace bloqueada y se libera sola cuando la anterior está Hecha"
+                      value={previas.some((x) => x.key === f.despues) ? f.despues : ''}
+                      onChange={(e) => editar(f.key, { despues: Number(e.target.value) || null })}
+                    >
+                      <option value="">Sin previa</option>
+                      {previas.map((x) => (
+                        <option key={x.key} value={x.key}>
+                          Después de: {x.titulo || 'sin título'} ({formatFecha(x.fecha, { day: 'numeric', month: 'short' })})
                         </option>
                       ))}
                     </select>
@@ -277,7 +305,9 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
                 )
               })}
           </div>
-          <p className="muted small">Las fechas copiadas respetan el día de la semana (el 2.º martes pasa al 2.º martes). Después de crear, cada tarea se edita como cualquier otra.</p>
+          <p className="muted small">
+            Las fechas copiadas respetan el día de la semana (el 2.º martes pasa al 2.º martes), y también las cadenas («Después de») entre tareas copiadas. Una tarea con previa nace bloqueada y pasa a Por hacer, con aviso por mail, cuando la previa está Hecha.
+          </p>
         </section>
       ) : null}
     </Modal>

@@ -75,3 +75,14 @@ def test_plantilla_inactiva_no_genera_y_validaciones(api_client, persona, hoy):
 @pytest.mark.django_db
 def test_solo_admin_gestiona_plantillas(equipo_client):
     assert equipo_client.get('/api/tareas-recurrentes/').status_code == 403
+
+
+@pytest.mark.django_db
+def test_la_plantilla_lleva_horario(api_client, persona, hoy):
+    p = _plantilla(api_client, persona, por_dia=1, hora_inicio='10:00', hora_fin='10:30')
+    t = Tarea.objects.filter(recurrente=p).first()
+    assert str(t.hora_inicio) == '10:00:00' and str(t.hora_fin) == '10:30:00'
+    r = api_client.post('/api/tareas-recurrentes/', {
+        'titulo': 'X', 'dias': [0], 'hora_inicio': '10:00', 'hora_fin': '09:00',
+    }, format='json')
+    assert r.status_code == 400 and 'hora_fin' in r.data

@@ -223,17 +223,21 @@ def test_el_eco_del_webhook_no_duplica_la_tarea(api_client, falso, persona):
 
 @pytest.mark.django_db
 def test_las_recurrentes_llegan_a_notion_de_a_tandas(api_client, falso, persona, monkeypatch):
-    monkeypatch.setattr(notion, 'LIMITE_ENVIO', 10)
+    monkeypatch.setattr(notion, 'LIMITE_ENVIO', 2)
     r = api_client.post('/api/tareas-recurrentes/', {'titulo': 'Historia', 'dias': list(range(7)), 'personas': [persona.id]}, format='json')
-    total = Tarea.objects.filter(recurrente=r.data['id'], notion_page_id__isnull=True).count()
-    assert total > 10
+    hasta = notion.fin_de_ventana()
+    en_ventana = Tarea.objects.filter(recurrente=r.data['id'], fecha_limite__lte=hasta)
+    total = en_ventana.count()
+    assert total > 2
     primera = notion.sincronizar()
-    assert primera['enviadas'] == 10 and primera['pendientes'] == total - 10
-    enviadas = 10
+    assert primera['enviadas'] == 2 and primera['pendientes'] == total - 2
+    enviadas = 2
     while enviadas < total:
         EstadoNotion.objects.filter(pk=1).update(ultima_sync=None)
         enviadas += notion.sincronizar()['enviadas']
-    assert enviadas == total and not Tarea.objects.filter(notion_page_id__isnull=True).exists()
+    assert enviadas == total and not en_ventana.filter(notion_page_id__isnull=True).exists()
+    # Las de después de la ventana esperan en el panel.
+    assert not Tarea.objects.filter(recurrente=r.data['id'], fecha_limite__gt=hasta).exclude(notion_page_id=None).exists()
     # Las más próximas salen primero.
     assert Tarea.objects.order_by('fecha_limite').first().notion_page_id in falso.paginas
 
@@ -371,3 +375,125 @@ def test_subtareas_son_to_do_y_el_eco_no_reaplica(api_client, falso):
     assert page['properties']['Estado']['select']['name'] == 'En progreso'
     assert notion.aplicar_pagina(falso.paginas[tarea.notion_page_id]) is None
 
+
+
+@pytest.mark.django_db
+def test_rango_y_horario_van_en_la_fecha_y_el_eco_no_reaplica(api_client, falso):
+    r = api_client.post('/api/tareas/', {
+        'titulo': 'Rodaje', 'fecha_inicio': '2026-11-10', 'fecha_limite': '2026-11-12', 'hora_inicio': '09:00', 'hora_fin': '18:30',
+    }, format='json')
+    assert r.status_code == 201, r.data
+    tarea = Tarea.objects.get()
+    page = falso.paginas[tarea.notion_page_id]
+    assert page['properties']['Fecha']['date'] == {
+        'start': '2026-11-10T09:00:00', 'end': '2026-11-12T18:30:00', 'time_zone': 'America/Argentina/Buenos_Aires',
+    }
+    assert notion.aplicar_pagina(page) is None
+
+    # Como lo devuelve Notion (con offset), cambiado allá a un solo día con horario.
+    page['properties']['Fecha']['date'] = {'start': '2026-11-15T10:00:00.000-03:00', 'end': '2026-11-15T11:00:00.000-03:00'}
+    assert notion.aplicar_pagina(page) == 'actualizada'
+    tarea.refresh_from_db()
+    assert (tarea.fecha_inicio, str(tarea.fecha_limite), str(tarea.hora_inicio), str(tarea.hora_fin)) == (None, '2026-11-15', '10:00:00', '11:00:00')
+
+
+@pytest.mark.django_db(transaction=True)
+def test_desde_notion_no_se_avanza_una_bloqueada_y_completar_la_previa_desbloquea(api_client, falso):
+    previa = api_client.post('/api/tareas/', {'titulo': 'Guion'}, format='json').data
+    r = api_client.post('/api/tareas/', {'titulo': 'Edición', 'depende_de': [previa['id']]}, format='json')
+    tarea = Tarea.objects.get(pk=r.data['id'])
+    page = falso.paginas[tarea.notion_page_id]
+    assert page['properties']['Estado']['select']['name'] == 'Bloqueada'
+
+    page['properties']['Estado'] = {'id': 'Estado', 'type': 'select', 'select': {'name': 'En progreso'}}
+    notion.aplicar_pagina(page)
+    tarea.refresh_from_db()
+    assert tarea.estado == 'bloqueada' and tarea.bloqueo_auto
+    assert page['properties']['Estado']['select']['name'] == 'Bloqueada'
+
+    pagina_previa = falso.paginas[Tarea.objects.get(pk=previa['id']).notion_page_id]
+    pagina_previa['properties']['Estado'] = {'id': 'Estado', 'type': 'select', 'select': {'name': 'Hecha'}}
+    notion.aplicar_pagina(pagina_previa)
+    tarea.refresh_from_db()
+    assert tarea.estado == 'pendiente'
+    assert page['properties']['Estado']['select']['name'] == 'Por hacer'
+
+
+@pytest.mark.django_db(transaction=True)
+def test_dependencias_van_como_bloqueada_por(api_client, falso):
+    previa = api_client.post('/api/tareas/', {'titulo': 'Guion'}, format='json').data
+    tarea = api_client.post('/api/tareas/', {'titulo': 'Edición', 'depende_de': [previa['id']]}, format='json').data
+    pid_previa = Tarea.objects.get(pk=previa['id']).notion_page_id
+    page = falso.paginas[Tarea.objects.get(pk=tarea['id']).notion_page_id]
+    assert page['properties']['Bloqueada por']['relation'] == [{'id': pid_previa}]
+    assert notion.aplicar_pagina(page) is None  # el eco no reaplica
+
+    # Sacada en Notion: se libera en el panel.
+    page['properties']['Bloqueada por'] = {'id': 'Bloqueada por', 'type': 'relation', 'relation': []}
+    notion.aplicar_pagina(page)
+    t = Tarea.objects.get(pk=tarea['id'])
+    assert not t.depende_de.exists() and t.estado == 'pendiente'
+
+    # Agregada en Notion: se bloquea en el panel.
+    otra = api_client.post('/api/tareas/', {'titulo': 'Música'}, format='json').data
+    pid_otra = Tarea.objects.get(pk=otra['id']).notion_page_id
+    page['properties']['Bloqueada por'] = {'id': 'Bloqueada por', 'type': 'relation', 'relation': [{'id': pid_otra}]}
+    notion.aplicar_pagina(page)
+    t.refresh_from_db()
+    assert list(t.depende_de.values_list('pk', flat=True)) == [otra['id']] and t.estado == 'bloqueada'
+
+
+@pytest.mark.django_db
+def test_la_previa_sin_pagina_se_suma_cuando_la_tiene(api_client, falso, settings):
+    token = settings.NOTION_TOKEN
+    settings.NOTION_TOKEN = ''
+    previa = api_client.post('/api/tareas/', {'titulo': 'Guion'}, format='json').data
+    settings.NOTION_TOKEN = token
+    tarea = api_client.post('/api/tareas/', {'titulo': 'Edición', 'depende_de': [previa['id']]}, format='json').data
+    page = falso.paginas[Tarea.objects.get(pk=tarea['id']).notion_page_id]
+    assert page['properties']['Bloqueada por']['relation'] == []
+    notion.enviar_tarea(Tarea.objects.get(pk=previa['id']))
+    assert page['properties']['Bloqueada por']['relation'] == [{'id': Tarea.objects.get(pk=previa['id']).notion_page_id}]
+
+
+def test_fin_de_ventana():
+    from datetime import date
+
+    assert notion.fin_de_ventana(date(2026, 11, 3)) == date(2026, 11, 8)  # martes → este domingo
+    assert notion.fin_de_ventana(date(2026, 11, 6)) == date(2026, 11, 8)  # viernes
+    assert notion.fin_de_ventana(date(2026, 11, 7)) == date(2026, 11, 15)  # sábado → la semana que entra
+    assert notion.fin_de_ventana(date(2026, 11, 8)) == date(2026, 11, 15)  # domingo
+
+
+@pytest.mark.django_db(transaction=True)
+def test_hechas_viejas_y_recurrentes_futuras_salen_de_notion_sin_borrarse(api_client, falso, persona, monkeypatch):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.equipo.models import TareaRecurrente
+
+    vieja = api_client.post('/api/tareas/', {'titulo': 'Grilla', 'subtareas': [{'titulo': 'A'}]}, format='json').data
+    api_client.patch(f'/api/tareas/{vieja["id"]}/', {'estado': 'hecha'}, format='json')
+    tarea = Tarea.objects.get(pk=vieja['id'])
+    pid = tarea.notion_page_id
+    Tarea.objects.filter(pk=tarea.pk).update(completada_en=timezone.now() - timedelta(days=8))
+    # Una recurrente subida antes de la ventana (como las de noviembre que ya estaban).
+    plantilla = TareaRecurrente.objects.create(titulo='Historia', dias=[0])
+    futura = Tarea.objects.create(titulo='Historia', recurrente=plantilla, fecha_limite=notion.fin_de_ventana() + timedelta(days=3))
+    notion.enviar_tarea(futura)
+    pid_futura = Tarea.objects.get(pk=futura.pk).notion_page_id
+
+    assert notion.mantenimiento() == {'archivadas': 2, 'enviadas': 0}
+    assert falso.paginas[pid]['in_trash'] and falso.paginas[pid_futura]['in_trash']
+    tarea.refresh_from_db()
+    assert tarea.notion_page_id is None and tarea.estado == 'hecha'
+    # El webhook de la página en la papelera no borra la tarea del panel.
+    assert notion.aplicar_pagina(falso.paginas[pid]) is None and Tarea.objects.filter(pk=tarea.pk).exists()
+    assert not tarea.subtareas.exclude(notion_block_id='').exists()
+    # No se vuelve a subir...
+    assert notion.enviar_pendientes() == 0
+    # ...salvo que se reabra.
+    api_client.patch(f'/api/tareas/{tarea.id}/', {'estado': 'en_curso'}, format='json')
+    tarea.refresh_from_db()
+    assert tarea.notion_page_id and tarea.notion_page_id != pid

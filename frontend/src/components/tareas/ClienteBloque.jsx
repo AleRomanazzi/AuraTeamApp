@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { ESTADOS_TAREA } from '../../lib/constants'
-import { formatFechaCorta, iniciales } from '../../lib/format'
+import { formatFechaCorta, formatHorarioTarea, iniciales } from '../../lib/format'
 
 const VISIBLES = 4
 const DIAS_CORTOS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
 const estadoDe = (v) => ESTADOS_TAREA.find((e) => e.value === v)
+const bloqueadaPorOtras = (t) => t.esperando && t.estado === 'bloqueada'
 
 function Marcas({ items }) {
   if (!items?.length) return <span className="tc-marcas" />
@@ -19,9 +20,10 @@ function Marcas({ items }) {
 
 function fechaTarea(t, hoy) {
   if (!t.fecha_limite) return null
+  const hora = t.hora_inicio ? ` · ${t.hora_inicio}` : ''
   if (t.vencida) return <span className="down">Venció {formatFechaCorta(t.fecha_limite)}</span>
-  if (t.fecha_limite === hoy) return <span className="tc-hoy">Hoy</span>
-  return <span>{formatFechaCorta(t.fecha_limite)}</span>
+  if (t.fecha_limite === hoy) return <span className="tc-hoy">Hoy{hora}</span>
+  return <span>{formatHorarioTarea(t)}</span>
 }
 
 /** Bloque de un cliente (o de la gestión interna si `cliente.id` es null): agenda + tareas abiertas. */
@@ -69,8 +71,8 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
                   role="checkbox"
                   aria-checked={tildada}
                   aria-label={`Marcar «${t.titulo}» como hecha`}
-                  title={t.puede_editar ? 'Marcar como hecha' : 'Solo podés completar tus tareas'}
-                  disabled={!t.puede_editar || tildada}
+                  title={bloqueadaPorOtras(t) ? 'Espera a otras tareas' : t.puede_editar ? 'Marcar como hecha' : 'Solo podés completar tus tareas'}
+                  disabled={!t.puede_editar || tildada || bloqueadaPorOtras(t)}
                   onClick={() => onMarcarHecha(t)}
                 />
                 <button type="button" className="tc-tarea-main" onClick={() => onAbrirTarea(t)}>
@@ -78,6 +80,7 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
                   <span className="tc-tarea-meta">
                     <span className={`tag tag-${est?.tag || 'neutral'}`}>{est?.label}</span>
                     {fechaTarea(t, hoy)}
+                    {t.esperando ? <span title="Espera a otras tareas">🔒</span> : null}
                     {t.progreso?.total ? (
                       <span className="tc-progreso" title={`${t.progreso.porcentaje}%`}>
                         {t.progreso.hechas}/{t.progreso.total}

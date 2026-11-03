@@ -26,6 +26,8 @@ const VACIA = {
   titulo_subtarea: "",
   etiqueta: "historias",
   prioridad: "media",
+  hora_inicio: "",
+  hora_fin: "",
   activa: true,
 };
 
@@ -60,6 +62,8 @@ export default function RecurrentesModal({ onClose }) {
         ...datos,
         cliente: datos.cliente || null,
         por_dia: Number(datos.por_dia),
+        hora_inicio: datos.hora_inicio || null,
+        hora_fin: (datos.hora_inicio && datos.hora_fin) || null,
       };
       return datos.id
         ? api.put(`tareas-recurrentes/${datos.id}/`, body)
@@ -198,6 +202,12 @@ export default function RecurrentesModal({ onClose }) {
               ))}
             </select>
           </Field>
+          <Field label="Hora de inicio" hint="Opcional. Las tareas van al calendario con ese horario.">
+            <input type="time" value={f.hora_inicio ?? ""} onChange={set("hora_inicio")} />
+          </Field>
+          <Field label="Hora de fin" hint="Opcional (si no, dura 1 hora).">
+            <input type="time" value={f.hora_fin ?? ""} onChange={set("hora_fin")} disabled={!f.hora_inicio} />
+          </Field>
         </div>
         {Number(f.por_dia) > 1 ? (
           <label className="check-row">
@@ -311,12 +321,13 @@ export default function RecurrentesModal({ onClose }) {
                   type="button"
                   className="recurrente-main"
                   onClick={() =>
-                    setF({ ...VACIA, ...p, cliente: p.cliente ?? "" })
+                    setF({ ...VACIA, ...p, cliente: p.cliente ?? "", hora_inicio: p.hora_inicio ?? "", hora_fin: p.hora_fin ?? "" })
                   }
                 >
                   <strong>{p.titulo}</strong>
                   <span className="muted small">
-                    {p.por_dia} por día{p.agrupar_subtareas ? " · con subtareas" : ""} · {diasTexto(p.dias)} ·{" "}
+                    {p.por_dia} por día{p.agrupar_subtareas ? " · con subtareas" : ""} · {diasTexto(p.dias)}
+                    {p.hora_inicio ? ` · ${p.hora_inicio}${p.hora_fin ? `–${p.hora_fin}` : ""}` : ""} ·{" "}
                     {labelDe(etiquetas, p.etiqueta)}
                     {p.personas.length
                       ? ` · ${p.personas.map((id) => personas.find((x) => x.id === id)?.nombre ?? "?").join(", ")}`

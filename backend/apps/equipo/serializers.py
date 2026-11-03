@@ -12,11 +12,13 @@ from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Subtarea, Tarea, TareaRecurrente
+from .services import ESTADOS_DE_AVANCE, ajustar_por_dependencias, crearia_ciclo
 
 MAX_LINKS_TAREA = 20
 MAX_POR_DIA = 10
 MAX_TAREAS_PLAN = 100
 MAX_SUBTAREAS = 30
+MAX_DEPENDENCIAS = 20
 
 
 def es_interna(tarea) -> bool:
@@ -50,15 +52,22 @@ class TareaSerializer(serializers.ModelSerializer):
     vencida = serializers.SerializerMethodField()
     subtareas = SubtareaSerializer(many=True, required=False)
     progreso = serializers.SerializerMethodField()
+    hora_inicio = serializers.TimeField(format='%H:%M', required=False, allow_null=True)
+    hora_fin = serializers.TimeField(format='%H:%M', required=False, allow_null=True)
+    depende_de = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Tarea.objects.all())
+    dependencias = serializers.SerializerMethodField()
+    desbloquea = serializers.SerializerMethodField()
+    esperando = serializers.SerializerMethodField()
 
     class Meta:
         model = Tarea
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
-            'fecha_limite', 'etiqueta', 'links', 'completada_en', 'asignados', 'asignados_nombres', 'vencida', 'creado',
-            'notion_url', 'creado_por', 'puede_editar', 'recurrente', 'subtareas', 'progreso',
+            'fecha_limite', 'fecha_inicio', 'hora_inicio', 'hora_fin', 'etiqueta', 'links', 'completada_en', 'asignados',
+            'asignados_nombres', 'vencida', 'creado', 'notion_url', 'creado_por', 'puede_editar', 'recurrente',
+            'subtareas', 'progreso', 'depende_de', 'dependencias', 'desbloquea', 'esperando', 'bloqueo_auto',
         )
-        read_only_fields = ('id', 'completada_en', 'creado', 'recurrente')
+        read_only_fields = ('id', 'completada_en', 'creado', 'recurrente', 'bloqueo_auto')
 
     notion_url = serializers.SerializerMethodField()
     creado_por = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
@@ -82,6 +91,95 @@ class TareaSerializer(serializers.ModelSerializer):
 
     def get_vencida(self, obj):
         return bool(obj.fecha_limite and obj.estado != 'hecha' and obj.fecha_limite < timezone.localdate())
+
+    def _privadas(self):
+        if 'privadas' not in self.context:
+            request = self.context.get('request')
+            self.context['privadas'] = set() if request is None or es_admin(request.user) else etiquetas.privadas()
+        return self.context['privadas']
+
+    def _resumen(self, t):
+        if t.etiqueta in self._privadas():
+            return {'id': t.id, 'titulo': 'Tarea privada', 'estado': t.estado, 'cliente_nombre': None}
+        return {'id': t.id, 'titulo': t.titulo, 'estado': t.estado, 'cliente_nombre': t.cliente.nombre if t.cliente_id else None}
+
+    def get_dependencias(self, obj):
+        return [self._resumen(t) for t in obj.depende_de.all()] if obj.pk else []
+
+    def get_desbloquea(self, obj):
+        return [self._resumen(t) for t in obj.desbloquea.all()] if obj.pk else []
+
+    def get_esperando(self, obj):
+        return any(t.estado != 'hecha' for t in obj.depende_de.all()) if obj.pk else False
+
+    def validate_depende_de(self, value):
+        unicas = list({t.pk: t for t in value}.values())
+        if len(unicas) > MAX_DEPENDENCIAS:
+            raise serializers.ValidationError(f'Máximo {MAX_DEPENDENCIAS} dependencias.')
+        if self.instance is not None and any(t.pk == self.instance.pk for t in unicas):
+            raise serializers.ValidationError('Una tarea no puede depender de sí misma.')
+        request = self.context.get('request')
+        if request is not None and not es_admin(request.user):
+            privadas = etiquetas.privadas()
+            persona = persona_de(request.user)
+            for t in unicas:
+                aviso = getattr(t, 'aviso_servicio', None)
+                if t.etiqueta in privadas or (aviso is not None and aviso.persona_id != getattr(persona, 'pk', None)):
+                    raise serializers.ValidationError('Hay una tarea que no existe.')
+        if self.instance is not None and crearia_ciclo(self.instance, unicas):
+            raise serializers.ValidationError('Así quedaría un ciclo: una de esas tareas ya espera (directa o indirectamente) a esta.')
+        return unicas
+
+    def _validar_horario(self, attrs):
+        inst = self.instance
+
+        def valor(k):
+            return attrs[k] if k in attrs else getattr(inst, k, None)
+
+        fin, inicio = valor('fecha_limite'), valor('fecha_inicio')
+        if not fin:
+            # Sin fecha no hay rango ni horario.
+            for k in ('fecha_inicio', 'hora_inicio', 'hora_fin'):
+                if valor(k) is not None:
+                    attrs[k] = None
+            return
+        for k in ('hora_inicio', 'hora_fin'):
+            if attrs.get(k) is not None:
+                attrs[k] = attrs[k].replace(second=0, microsecond=0)
+        h_ini, h_fin = valor('hora_inicio'), valor('hora_fin')
+        if inicio and inicio == fin:
+            attrs['fecha_inicio'] = inicio = None
+        if inicio and inicio > fin:
+            raise serializers.ValidationError({'fecha_inicio': 'La fecha de inicio tiene que ser anterior a la de fin.'})
+        if h_fin and not h_ini:
+            raise serializers.ValidationError({'hora_inicio': 'Poné también la hora de inicio.'})
+        if inicio and h_ini and not h_fin:
+            raise serializers.ValidationError({'hora_fin': 'En una tarea de varios días, poné también la hora de fin.'})
+        if not inicio and h_ini and h_fin and h_fin <= h_ini:
+            raise serializers.ValidationError({'hora_fin': 'La hora de fin tiene que ser posterior a la de inicio.'})
+
+    def _validar_dependencias(self, attrs):
+        """Bloqueo estricto: mientras espere a otras tareas, no puede pasar a En progreso, En revisión ni Hecha."""
+        inst = self.instance
+        if 'depende_de' in attrs:
+            deps = attrs['depende_de']
+        else:
+            deps = list(inst.depende_de.all()) if inst is not None else []
+        pendientes = [t for t in deps if t.estado != 'hecha']
+        estado = attrs.get('estado', getattr(inst, 'estado', 'pendiente'))
+        if not pendientes or estado not in ESTADOS_DE_AVANCE:
+            return
+        antes = set() if inst is None else set(inst.depende_de.values_list('pk', flat=True))
+        avanza = inst is None or estado != inst.estado
+        nuevas = [t for t in pendientes if t.pk not in antes]
+        if avanza or nuevas:
+            nombres = ', '.join(f'«{self._resumen(t)["titulo"]}»' for t in (nuevas or pendientes)[:3])
+            raise serializers.ValidationError({'estado': f'Esta tarea espera a {nombres}: no puede avanzar hasta que esté Hecha.'})
+
+    def validate(self, attrs):
+        self._validar_horario(attrs)
+        self._validar_dependencias(attrs)
+        return attrs
 
     def get_progreso(self, obj):
         subtareas = list(obj.subtareas.all())
@@ -192,22 +290,30 @@ class TareaSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         personas = validated_data.pop('personas_asignadas', [])
         subtareas = validated_data.pop('subtareas', None)
+        dependencias = validated_data.pop('depende_de', None)
         pedido = validated_data.get('estado', 'pendiente')
         self._aplicar_estado(validated_data)
         tarea = Tarea.objects.create(**validated_data)
+        if dependencias:
+            tarea.depende_de.set(dependencias)
         for p in personas:
             AsignacionTarea.objects.create(persona=p, tarea=tarea)
         cambio = False
         if subtareas is not None:
             cambio = self._reemplazar_subtareas(tarea, subtareas)
         self._cerrar_progreso(tarea, 'pendiente' if pedido == 'hecha' else tarea.estado, cambio)
+        ajustar_por_dependencias(tarea)
         return tarea
 
     @transaction.atomic
     def update(self, instance, validated_data):
         personas = validated_data.pop('personas_asignadas', None)
         subtareas = validated_data.pop('subtareas', None)
+        dependencias = validated_data.pop('depende_de', None)
         estado_anterior = instance.estado
+        if validated_data.get('estado', estado_anterior) != estado_anterior:
+            # Lo decidió una persona: si después vuelve a quedar bloqueada por dependencias, lo marca el sistema.
+            validated_data['bloqueo_auto'] = False
         self._aplicar_estado(validated_data, instance)
         for k, v in validated_data.items():
             setattr(instance, k, v)
@@ -219,8 +325,11 @@ class TareaSerializer(serializers.ModelSerializer):
             for p in personas:
                 if p.id not in actuales:
                     AsignacionTarea.objects.create(persona=p, tarea=instance)
+        if dependencias is not None:
+            instance.depende_de.set(dependencias)
         cambio = self._reemplazar_subtareas(instance, subtareas) if subtareas is not None else False
         self._cerrar_progreso(instance, estado_anterior, cambio)
+        ajustar_por_dependencias(instance)
         if hasattr(instance, '_prefetched_objects_cache'):
             instance._prefetched_objects_cache.clear()
         return instance
@@ -228,10 +337,12 @@ class TareaSerializer(serializers.ModelSerializer):
 
 class TareaDelPlanSerializer(serializers.ModelSerializer):
     asignados = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Persona.objects.all())
+    # Posición (en la lista del plan) de una tarea anterior que tiene que estar Hecha antes.
+    despues_de = serializers.IntegerField(required=False, allow_null=True, min_value=0)
 
     class Meta:
         model = Tarea
-        fields = ('titulo', 'descripcion', 'fecha_limite', 'etiqueta', 'prioridad', 'asignados')
+        fields = ('titulo', 'descripcion', 'fecha_limite', 'etiqueta', 'prioridad', 'asignados', 'despues_de')
         extra_kwargs = {'fecha_limite': {'required': True, 'allow_null': False}}
 
     validate_titulo = TareaSerializer.validate_titulo
@@ -244,14 +355,26 @@ class PlanDelMesSerializer(serializers.Serializer):
     cliente = serializers.PrimaryKeyRelatedField(queryset=Cliente.objects.all(), allow_null=True, required=False, default=None)
     tareas = TareaDelPlanSerializer(many=True, allow_empty=False, max_length=MAX_TAREAS_PLAN)
 
+    def validate_tareas(self, value):
+        for i, datos in enumerate(value):
+            previa = datos.get('despues_de')
+            # Solo hacia atrás: así no puede haber ciclos.
+            if previa is not None and previa >= i:
+                raise serializers.ValidationError(f'La tarea {i + 1} solo puede ir después de una de las anteriores.')
+        return value
+
     @transaction.atomic
     def create(self, validated_data):
         cliente, user = validated_data.get('cliente'), self.context['request'].user
         creadas = []
         for datos in validated_data['tareas']:
             personas = datos.pop('asignados', [])
+            previa = datos.pop('despues_de', None)
             tarea = Tarea.objects.create(cliente=cliente, user=user, **datos)
             AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=p, tarea=tarea) for p in personas])
+            if previa is not None:
+                tarea.depende_de.add(creadas[previa])
+                ajustar_por_dependencias(tarea)
             creadas.append(tarea)
         return creadas
 
@@ -261,12 +384,15 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
     cliente_color = serializers.CharField(source='cliente.color', read_only=True, default=None)
     personas = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Persona.objects.all())
     por_dia = serializers.IntegerField(min_value=1, max_value=MAX_POR_DIA, default=1)
+    hora_inicio = serializers.TimeField(format='%H:%M', required=False, allow_null=True)
+    hora_fin = serializers.TimeField(format='%H:%M', required=False, allow_null=True)
 
     class Meta:
         model = TareaRecurrente
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'personas', 'dias', 'por_dia',
-            'agrupar_subtareas', 'titulo_subtarea', 'etiqueta', 'prioridad', 'activa', 'generada_hasta', 'creado',
+            'agrupar_subtareas', 'titulo_subtarea', 'etiqueta', 'prioridad', 'hora_inicio', 'hora_fin', 'activa',
+            'generada_hasta', 'creado',
         )
         read_only_fields = ('id', 'generada_hasta', 'creado')
 
@@ -285,6 +411,19 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
         if not isinstance(value, list) or not value or any(not isinstance(d, int) or not 0 <= d <= 6 for d in value):
             raise serializers.ValidationError('Elegí al menos un día de la semana.')
         return sorted(set(value))
+
+    def validate(self, attrs):
+        inst = self.instance
+        h_ini = attrs.get('hora_inicio', getattr(inst, 'hora_inicio', None))
+        h_fin = attrs.get('hora_fin', getattr(inst, 'hora_fin', None))
+        for k in ('hora_inicio', 'hora_fin'):
+            if attrs.get(k) is not None:
+                attrs[k] = attrs[k].replace(second=0, microsecond=0)
+        if h_fin and not h_ini:
+            raise serializers.ValidationError({'hora_inicio': 'Poné también la hora de inicio.'})
+        if h_ini and h_fin and h_fin <= h_ini:
+            raise serializers.ValidationError({'hora_fin': 'La hora de fin tiene que ser posterior a la de inicio.'})
+        return attrs
 
 
 class PersonaBasicaSerializer(serializers.ModelSerializer):

@@ -55,3 +55,19 @@ def test_el_plan_valida_todas_las_filas_o_no_crea_ninguna(api_client, persona):
     assert r.status_code == 400
     assert Tarea.objects.count() == 0
     assert api_client.post(URL, {'cliente': cliente.id, 'tareas': []}, format='json').status_code == 400
+
+
+@pytest.mark.django_db
+def test_el_plan_encadena_tareas(api_client, persona):
+    cliente = Cliente.objects.create(nombre='Lennon')
+    body = _body(cliente, persona)
+    body['tareas'][1]['despues_de'] = 0
+    body['tareas'][2]['despues_de'] = 1
+    assert api_client.post(URL, body, format='json').status_code == 201
+    t1, t2, t3 = Tarea.objects.filter(cliente=cliente).order_by('fecha_limite')
+    assert (t1.estado, t2.estado, t3.estado) == ('pendiente', 'bloqueada', 'bloqueada')
+    assert list(t3.depende_de.all()) == [t2]
+    # Solo hacia atrás.
+    body = _body(cliente, persona)
+    body['tareas'][0]['despues_de'] = 1
+    assert api_client.post(URL, body, format='json').status_code == 400

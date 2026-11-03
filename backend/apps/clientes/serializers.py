@@ -191,7 +191,15 @@ class RegistrarPagoSerializer(serializers.Serializer):
 class PasoOnboardingSerializer(serializers.ModelSerializer):
     class Meta:
         model = PasoOnboarding
-        fields = ('id', 'orden', 'titulo', 'descripcion', 'rol', 'dias_desde_alta', 'etiqueta', 'accion', 'activo')
+        fields = ('id', 'orden', 'titulo', 'descripcion', 'rol', 'dias_desde_alta', 'etiqueta', 'accion', 'despues_de', 'activo')
+
+    def validate_despues_de(self, value):
+        paso = value
+        while paso is not None and self.instance is not None:
+            if paso.pk == self.instance.pk:
+                raise serializers.ValidationError('Así quedaría un ciclo: ese paso ya viene después de este.')
+            paso = paso.despues_de
+        return value
 
     def validate_etiqueta(self, value):
         from apps.calendario import etiquetas

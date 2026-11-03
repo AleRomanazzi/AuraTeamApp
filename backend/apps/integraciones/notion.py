@@ -20,7 +20,7 @@ import re
 import time
 import unicodedata
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import httpx
 from django.conf import settings
@@ -32,7 +32,14 @@ from django.utils.dateparse import parse_datetime
 from apps.calendario.etiquetas import privadas as etiquetas_privadas
 from apps.clientes.models import Cliente
 from apps.equipo.models import AsignacionTarea, Persona, Subtarea, Tarea
-from apps.equipo.services import estado_segun_subtareas, fijar_estado
+from apps.equipo.services import (
+    ESTADOS_DE_AVANCE,
+    ajustar_por_dependencias,
+    crearia_ciclo,
+    esperando,
+    estado_segun_subtareas,
+    fijar_estado,
+)
 
 from .models import EstadoNotion
 
@@ -43,7 +50,12 @@ VERSION = '2025-09-03'
 TIMEOUT = 20
 LIMITE_TEXTO = 2000
 INTERVALO_INCREMENTAL = timedelta(seconds=60)
-DIAS_HECHAS_A_ENVIAR = 30
+# Para no llenar el workspace (plan con tope de bloques): las Hechas salen de Notion a los N días (quedan en el panel)
+# y las recurrentes solo se suben hasta el domingo de la semana en curso; desde el sábado, también la siguiente.
+DIAS_HECHAS_EN_NOTION = 7
+# Páginas que se sacan de Notion por corrida (cron) o por sincronización incremental.
+LIMITE_ARCHIVO = 40
+LIMITE_ARCHIVO_INCREMENTAL = 10
 # Tope de tareas recurrentes que sube cada sincronización incremental, para no pasar el timeout del servidor.
 LIMITE_ENVIO = 25
 # Páginas por tanda. Cada una pide sus checkboxes: una sincronización completa no entra en el tiempo del servidor.
@@ -57,6 +69,8 @@ P_FECHA = 'Fecha'
 P_CLIENTE = 'Cliente'
 P_RESPONSABLE = 'Responsable'
 P_CLIENTE_NOMBRE = 'Cliente'
+# Relación de la base consigo misma (dual: Notion completa sola «Bloquea»). El panel solo escribe «Bloqueada por».
+P_BLOQUEADA_POR = 'Bloqueada por'
 
 ESTADOS = {'pendiente': 'Por hacer', 'en_curso': 'En progreso', 'bloqueada': 'Bloqueada', 'en_revision': 'En revisión', 'hecha': 'Hecha'}
 ESTADOS_INV = {v: k for k, v in ESTADOS.items()}
@@ -154,9 +168,47 @@ def _select(prop):
     return s.get('name') if s else None
 
 
-def _fecha(prop):
+def _dia_y_hora(valor):
+    """('AAAA-MM-DD', 'HH:MM' o None) de una fecha de Notion, en la zona horaria del panel."""
+    if len(valor) <= 10:
+        return valor[:10], None
+    momento = datetime.fromisoformat(valor.replace('Z', '+00:00'))
+    if timezone.is_aware(momento):
+        momento = timezone.localtime(momento)
+    return momento.date().isoformat(), momento.strftime('%H:%M')
+
+
+def _fechas(prop) -> dict:
+    """fecha_limite y, solo si los hay, fecha_inicio / hora_inicio / hora_fin (así no cambian las huellas viejas)."""
     d = (prop or {}).get('date')
-    return d['start'][:10] if d and d.get('start') else None
+    if not d or not d.get('start'):
+        return {'fecha_limite': None}
+    dia, hora = _dia_y_hora(d['start'])
+    if not d.get('end'):
+        return {'fecha_limite': dia, **({'hora_inicio': hora} if hora else {})}
+    dia_fin, hora_fin = _dia_y_hora(d['end'])
+    datos = {'fecha_limite': dia_fin}
+    if dia_fin != dia:
+        datos['fecha_inicio'] = dia
+    if hora and hora_fin and (dia_fin != dia or hora_fin > hora):
+        datos['hora_inicio'], datos['hora_fin'] = hora, hora_fin
+    elif hora and dia_fin == dia:
+        datos['hora_inicio'] = hora
+    return datos
+
+
+def _fecha_notion(d: dict):
+    fin = d['fecha_limite']
+    if not fin:
+        return None
+    inicio, h_ini, h_fin = d.get('fecha_inicio'), d.get('hora_inicio'), d.get('hora_fin')
+    if h_ini:
+        return {
+            'start': f'{inicio or fin}T{h_ini}:00',
+            'end': f'{fin}T{h_fin}:00' if h_fin else None,
+            'time_zone': settings.TIME_ZONE,
+        }
+    return {'start': inicio or fin, 'end': fin if inicio else None}
 
 
 def _ids(prop, tipo):
@@ -175,10 +227,13 @@ def _datos_pagina(page, privada=False) -> dict:
         'descripcion': _texto(p.get(P_NOTAS)),
         'estado': ESTADOS_INV.get(_select(p.get(P_ESTADO)), 'pendiente'),
         'prioridad': PRIORIDADES_INV.get(_select(p.get(P_PRIORIDAD)), 'media'),
-        'fecha_limite': _fecha(p.get(P_FECHA)),
+        **_fechas(p.get(P_FECHA)),
         'cliente': _ids(p.get(P_CLIENTE), 'relation'),
         'personas': _ids(p.get(P_RESPONSABLE), 'people'),
     }
+    previas = _ids(p.get(P_BLOQUEADA_POR), 'relation')
+    if previas:
+        datos['bloqueada_por'] = previas
     # Solo se agrega en las privadas para no alterar las huellas ya guardadas de las demás.
     if privada:
         datos['privada'] = True
@@ -190,6 +245,28 @@ def _marcas(tarea: Tarea) -> list:
     if hasattr(tarea, '_prefetched_objects_cache'):
         tarea._prefetched_objects_cache.pop('subtareas', None)
     return [[s.titulo.strip()[:200], bool(s.hecha)] for s in tarea.subtareas.all()]
+
+
+def _previas_en_notion(tarea: Tarea, privada: bool):
+    """Dependencias que se pueden mostrar en Notion: con página en la misma base que la tarea."""
+    if not tarea.pk:
+        return Tarea.objects.none()
+    return tarea.depende_de.exclude(notion_page_id=None).filter(notion_privada=privada)
+
+
+def _aplicar_bloqueada_por(tarea: Tarea, ids, privada: bool):
+    """Copia la relación de Notion a las dependencias. Las que Notion no puede mostrar (sin página o de la otra base)
+    se conservan; las que formarían un ciclo se ignoran."""
+    actuales = set(_previas_en_notion(tarea, privada).values_list('pk', flat=True))
+    nuevas = []
+    for previa in Tarea.objects.filter(notion_page_id__in=list(ids)).exclude(pk=tarea.pk):
+        if previa.pk in actuales or not crearia_ciclo(tarea, [previa]):
+            nuevas.append(previa.pk)
+    sacar, sumar = actuales - set(nuevas), set(nuevas) - actuales
+    if sacar:
+        tarea.depende_de.remove(*sacar)
+    if sumar:
+        tarea.depende_de.add(*sumar)
 
 
 def _datos_tarea(tarea: Tarea, privada=False) -> dict:
@@ -205,6 +282,18 @@ def _datos_tarea(tarea: Tarea, privada=False) -> dict:
     }
     fecha = tarea.fecha_limite
     datos['fecha_limite'] = fecha.isoformat() if hasattr(fecha, 'isoformat') else (fecha or None)
+    if datos['fecha_limite']:
+        # Solo cuando están cargados, para no cambiar las huellas de las tareas que no los usan.
+        inicio = tarea.fecha_inicio
+        if inicio:
+            datos['fecha_inicio'] = inicio.isoformat() if hasattr(inicio, 'isoformat') else inicio
+        for campo in ('hora_inicio', 'hora_fin'):
+            hora = getattr(tarea, campo)
+            if hora:
+                datos[campo] = hora.strftime('%H:%M') if hasattr(hora, 'strftime') else str(hora)[:5]
+    previas = _previas_en_notion(tarea, privada)
+    if previas:
+        datos['bloqueada_por'] = sorted(_norm(x) for x in previas.values_list('notion_page_id', flat=True))
     marcas = _marcas(tarea)
     if marcas:
         datos['subtareas'] = marcas
@@ -223,9 +312,10 @@ def _propiedades(d: dict) -> dict:
         P_NOTAS: {'rich_text': _rich(d['descripcion'])},
         P_ESTADO: {'select': {'name': ESTADOS[d['estado']]}},
         P_PRIORIDAD: {'select': {'name': PRIORIDADES[d['prioridad']]}},
-        P_FECHA: {'date': {'start': d['fecha_limite']} if d['fecha_limite'] else None},
+        P_FECHA: {'date': _fecha_notion(d)},
         P_CLIENTE: {'relation': [{'id': x} for x in d['cliente']]},
         P_RESPONSABLE: {'people': [{'id': x} for x in d['personas']]},
+        P_BLOQUEADA_POR: {'relation': [{'id': x} for x in d.get('bloqueada_por', [])]},
     }
 
 
@@ -383,6 +473,10 @@ def enviar_tarea(tarea: Tarea):
     tarea.notion_huella = _huella(datos) if page_id else ''
     tarea.notion_privada = privada
     Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=page_id, notion_huella=tarea.notion_huella, notion_privada=privada)
+    if page_id and vieja != page_id:
+        # Recién ahora se puede mostrar como «Bloqueada por» en las que dependen de ella.
+        for dep in Tarea.objects.filter(depende_de=tarea).exclude(notion_page_id=None).select_related('cliente'):
+            _seguro(enviar_tarea, dep)
     if vieja and vieja != page_id:
         # Cambió de base: la página vieja se borra después de vincular la nueva, así su webhook no borra la tarea.
         try:
@@ -408,8 +502,12 @@ def _es_de_servicio(tarea: Tarea) -> bool:
 
 def al_guardar_tarea(tarea: Tarea):
     """Se llama desde la API del panel; un fallo de Notion nunca debe impedir guardar la tarea."""
-    if configurado() and not _es_de_servicio(tarea):
+    if not configurado() or _es_de_servicio(tarea):
+        return
+    if va_a_notion(tarea):
         _seguro(enviar_tarea, tarea)
+    elif tarea.notion_page_id:
+        _seguro(sacar_de_notion, tarea)
 
 
 def al_vincular_persona(persona: Persona):
@@ -467,17 +565,28 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
         resultado = 'creada'
 
     anterior = tarea.estado if tarea.pk else None
+    estado = datos['estado']
     with transaction.atomic():
-        if datos['estado'] == 'hecha' and tarea.estado != 'hecha':
+        if tarea.pk:
+            _aplicar_bloqueada_por(tarea, datos.get('bloqueada_por', []), privada)
+        if anterior and estado != anterior:
+            tarea.bloqueo_auto = False
+            if estado in ESTADOS_DE_AVANCE and esperando(tarea):
+                # Bloqueo estricto: en Notion no se puede impedir, así que vuelve a Bloqueada y se reenvía.
+                estado, tarea.bloqueo_auto = 'bloqueada', True
+        if estado == 'hecha' and tarea.estado != 'hecha':
             tarea.completada_en = timezone.now()
-        elif datos['estado'] != 'hecha':
+        elif estado != 'hecha':
             tarea.completada_en = None
         tarea.notion_page_id = pid
         tarea.titulo = datos['titulo']
         tarea.descripcion = datos['descripcion']
-        tarea.estado = datos['estado']
+        tarea.estado = estado
         tarea.prioridad = datos['prioridad']
         tarea.fecha_limite = datos['fecha_limite']
+        tarea.fecha_inicio = datos.get('fecha_inicio')
+        tarea.hora_inicio = datos.get('hora_inicio')
+        tarea.hora_fin = datos.get('hora_fin')
         if not datos['cliente']:
             # Un cliente del panel sin página en Notion no se puede representar allá: no se pierde por eso.
             if tarea.cliente_id is None or tarea.cliente.notion_page_id:
@@ -494,19 +603,27 @@ def aplicar_pagina(page, candidatos=None, forzar_clientes=(), privada=False):
         tarea.notion_privada = privada
         tarea.notion_huella = huella
         tarea.save()
+        if anterior is None:
+            _aplicar_bloqueada_por(tarea, datos.get('bloqueada_por', []), privada)
         _aplicar_responsables(tarea, datos['personas'])
         # Si el checklist cambió, manda él (todas hechas → hecha; destildar una hecha → en curso).
         # Si no cambió y en Notion la pasaron a Hecha, se tildan todas.
         cambio = _aplicar_checklist(tarea, bloques)
-        if datos['estado'] == 'hecha' and anterior != 'hecha':
+        if estado == 'hecha' and anterior != 'hecha':
             tarea.subtareas.filter(hecha=False).update(hecha=True)
         elif cambio:
             fijar_estado(tarea, estado_segun_subtareas(tarea, tarea.estado))
+        ajustar_por_dependencias(tarea, avanzo=anterior is None)
         _empujar_si_difiere(tarea, datos)
     if anterior and anterior != tarea.estado:
+        from apps.equipo.dependencias import propagar
         from apps.notificaciones.services import al_cambiar_estado
 
-        transaction.on_commit(lambda: al_cambiar_estado(tarea, anterior))
+        def avisar():
+            al_cambiar_estado(tarea, anterior)
+            propagar(tarea, anterior)
+
+        transaction.on_commit(avisar)
     return resultado
 
 
@@ -585,9 +702,72 @@ def vincular_clientes() -> dict:
     }
 
 
+def fin_de_ventana(hoy=None):
+    """Último día con recurrentes en Notion: el domingo de esta semana, o el de la siguiente desde el sábado."""
+    hoy = hoy or timezone.localdate()
+    return hoy + timedelta(days=6 - hoy.weekday() + (7 if hoy.weekday() >= 5 else 0))
+
+
+def _fuera_de_notion(ahora=None) -> Q:
+    """Tareas que no tienen que estar en Notion: Hechas hace más de DIAS_HECHAS_EN_NOTION y recurrentes futuras."""
+    ahora = ahora or timezone.now()
+    limite = ahora - timedelta(days=DIAS_HECHAS_EN_NOTION)
+    hechas = Q(estado='hecha') & (
+        Q(completada_en__lt=limite) | Q(completada_en__isnull=True, fecha_limite__lt=timezone.localdate(limite))
+    )
+    futuras = Q(recurrente__isnull=False, fecha_limite__gt=fin_de_ventana(timezone.localdate(ahora)))
+    return hechas | futuras
+
+
+def va_a_notion(tarea: Tarea) -> bool:
+    return not Tarea.objects.filter(pk=tarea.pk).filter(_fuera_de_notion()).exists()
+
+
+def sacar_de_notion(tarea: Tarea):
+    """Manda la página a la papelera sin borrar la tarea del panel. Si después se reabre, se vuelve a crear."""
+    pid, privada = tarea.notion_page_id, tarea.notion_privada
+    if not pid:
+        return
+    # Primero se corta el vínculo: así el webhook de la página en la papelera no borra la tarea.
+    Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=None, notion_huella='', notion_privada=False)
+    try:
+        _request('PATCH', f'/pages/{pid}', {'in_trash': True})
+    except NoEncontrada:
+        pass
+    except Exception:
+        Tarea.objects.filter(pk=tarea.pk).update(notion_page_id=pid, notion_privada=privada)
+        raise
+    Subtarea.objects.filter(tarea=tarea).update(notion_block_id='')
+    tarea.notion_page_id, tarea.notion_huella, tarea.notion_privada = None, '', False
+
+
+def archivar(limite=LIMITE_ARCHIVO) -> int:
+    """Saca de Notion (de a `limite`) las tareas que ya no tienen que estar ahí. Devuelve cuántas sacó."""
+    if not configurado():
+        return 0
+    n = 0
+    for tarea in Tarea.objects.exclude(notion_page_id=None).filter(_fuera_de_notion()).order_by('fecha_limite', 'pk')[:limite]:
+        try:
+            sacar_de_notion(tarea)
+            n += 1
+        except NoEncontrada:
+            continue
+    return n
+
+
+def mantenimiento() -> dict:
+    """Paso del cron: saca lo que sobra en Notion y sube lo que entró en la ventana (p. ej. el sábado)."""
+    if not configurado():
+        return {}
+    try:
+        return {'archivadas': archivar(), 'enviadas': enviar_pendientes()}
+    except NotionError as e:
+        registrar_error(str(e))
+        raise
+
+
 def _sin_pagina(sin_privadas=False):
-    limite = timezone.now() - timedelta(days=DIAS_HECHAS_A_ENVIAR)
-    qs = Tarea.objects.filter(notion_page_id__isnull=True, aviso_servicio__isnull=True).exclude(estado='hecha', completada_en__lt=limite)
+    qs = Tarea.objects.filter(notion_page_id__isnull=True, aviso_servicio__isnull=True).exclude(_fuera_de_notion())
     if sin_privadas or not settings.NOTION_TAREAS_PRIVADAS_DS:
         qs = qs.exclude(etiqueta__in=etiquetas_privadas())
     return qs
@@ -668,7 +848,8 @@ def sincronizar(completa=False, cursor=None) -> dict:
             # Si quedó atrasada es un corte de tanda: se sigue desde ahí, sin releer las mismas páginas.
             desde = estado.ultima_sync - timedelta(minutes=5) if inicio - estado.ultima_sync < timedelta(minutes=3) else estado.ultima_sync
         filtro = {'timestamp': 'last_edited_time', 'last_edited_time': {'on_or_after': desde.isoformat()}} if desde else None
-        candidatos = {_clave(t.titulo): t for t in Tarea.objects.filter(notion_page_id__isnull=True)} if completa else None
+        sin_pagina = Tarea.objects.filter(notion_page_id__isnull=True).exclude(_fuera_de_notion())
+        candidatos = {_clave(t.titulo): t for t in sin_pagina} if completa else None
 
         vistas, sin_leer, paginas = set(), [], []
         for ds, privada in _bases():
@@ -716,6 +897,8 @@ def sincronizar(completa=False, cursor=None) -> dict:
         else:
             resumen['enviadas'] = enviar_pendientes(bool(sin_leer))
             resumen['pendientes'] = _sin_pagina(bool(sin_leer)).count()
+            if not completa:
+                resumen['archivadas'] = archivar(LIMITE_ARCHIVO_INCREMENTAL)
             if completa and resumen['pendientes']:
                 resumen['continuar'] = True
                 resumen['cursor'] = cursor

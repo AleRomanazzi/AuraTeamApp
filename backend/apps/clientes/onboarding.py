@@ -13,6 +13,7 @@ from apps.accounts.google import GoogleError
 from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import today
 from apps.equipo.models import AsignacionCliente, AsignacionTarea, Persona, Tarea
+from apps.equipo.services import ajustar_por_dependencias, esperando
 
 from .models import ROLES_ONBOARDING, Cliente, PasoOnboarding
 
@@ -72,6 +73,13 @@ def iniciar_onboarding(cliente: Cliente, responsables=None, user=None) -> list:
             if elegidos.get(paso.rol):
                 AsignacionTarea.objects.create(persona_id=elegidos[paso.rol], tarea=tarea)
             creadas.append(tarea)
+        por_paso = {t.paso_onboarding_id: t for t in creadas}
+        for tarea in creadas:
+            # Si el paso previo está inactivo, el paso arranca libre.
+            previa = por_paso.get(tarea.paso_onboarding.despues_de_id)
+            if previa is not None:
+                tarea.depende_de.add(previa)
+                ajustar_por_dependencias(tarea)
         Cliente.objects.filter(pk=cliente.pk).update(onboarding_iniciado=timezone.now())
 
     for tarea in creadas:
@@ -99,10 +107,19 @@ def crear_drive(cliente: Cliente, tarea: Tarea | None = None) -> str:
 
 def cerrar_paso_drive(cliente: Cliente, url: str, tarea: Tarea | None = None) -> None:
     tarea = tarea or Tarea.objects.filter(cliente=cliente, onboarding=True, paso_onboarding__accion='drive').exclude(estado='hecha').first()
-    if tarea is not None:
-        links = [*(tarea.links or []), {'titulo': 'Carpeta de Drive', 'url': url}]
-        Tarea.objects.filter(pk=tarea.pk).update(estado='hecha', completada_en=timezone.now(), links=links)
-        tarea.estado = 'hecha'
+    if tarea is None:
+        return
+    links = [*(tarea.links or []), {'titulo': 'Carpeta de Drive', 'url': url}]
+    if esperando(tarea):
+        # Bloqueo estricto: queda el link, pero la tarea no se cierra hasta que se liberen las previas.
+        Tarea.objects.filter(pk=tarea.pk).update(links=links)
+        return
+    anterior = tarea.estado
+    Tarea.objects.filter(pk=tarea.pk).update(estado='hecha', completada_en=timezone.now(), links=links)
+    tarea.estado = 'hecha'
+    from apps.equipo.dependencias import propagar
+
+    propagar(tarea, anterior)
 
 
 def progreso(cliente: Cliente) -> dict:

@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import Tag from '../ui/Tag'
 import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES, labelDe } from '../../lib/constants'
-import { formatFechaCorta } from '../../lib/format'
+import { formatHorarioTarea } from '../../lib/format'
 
 const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
+const AVANCE = ['en_curso', 'en_revision', 'hecha']
 
 /** Vista por estado (kanban). */
 export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
@@ -53,7 +54,8 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
                 <div className="task-card-title">{t.titulo}</div>
                 {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
                 <div className="task-card-meta">
-                  <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatFechaCorta(t.fecha_limite)}` : 'Sin fecha'}</span>
+                  <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatHorarioTarea(t)}` : 'Sin fecha'}</span>
+                  {t.esperando ? <span title={`Espera a: ${t.dependencias.filter((d) => d.estado !== 'hecha').map((d) => d.titulo).join(', ')}`}>🔒 Esperando</span> : null}
                   {t.progreso?.total ? <span title={`${t.progreso.porcentaje}%`}>{t.progreso.hechas}/{t.progreso.total}</span> : null}
                   {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
                   {t.links?.length ? <span>🔗 {t.links.length}</span> : null}
@@ -62,7 +64,7 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
                   <div className="task-card-actions">
                     <select className="select-sm" aria-label="Cambiar estado" value={t.estado} onChange={(e) => onCambiarEstado(t, e.target.value)}>
                       {ESTADOS_TAREA.map((s) => (
-                        <option key={s.value} value={s.value}>
+                        <option key={s.value} value={s.value} disabled={t.esperando && t.estado === 'bloqueada' && AVANCE.includes(s.value)}>
                           {s.label}
                         </option>
                       ))}

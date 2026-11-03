@@ -17,7 +17,7 @@ from apps.integraciones import notion
 from apps.notificaciones import services as avisos
 from apps.servicios.services import al_completar_tarea as servicios_al_completar
 
-from . import services
+from . import dependencias, services
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea, TareaRecurrente
 from .serializers import (
     AsignacionClienteSerializer,
@@ -97,7 +97,9 @@ class TareaViewSet(viewsets.ModelViewSet):
     permission_classes = [TareaPermission]
 
     def get_queryset(self):
-        qs = Tarea.objects.select_related('cliente', 'aviso_servicio').prefetch_related('asignaciones__persona', 'subtareas')
+        qs = Tarea.objects.select_related('cliente', 'aviso_servicio').prefetch_related(
+            'asignaciones__persona', 'subtareas', 'depende_de__cliente', 'desbloquea__cliente'
+        )
         if not es_admin(self.request.user):
             qs = qs.exclude(etiqueta__in=etiquetas.privadas())
             # Las tareas de pagos y aportes de servicios (con montos) solo las ve su responsable.
@@ -128,6 +130,7 @@ class TareaViewSet(viewsets.ModelViewSet):
             avisos.al_asignar(tarea, list(nuevas), user)
         if estado_anterior != tarea.estado:
             avisos.al_cambiar_estado(tarea, estado_anterior, user)
+            dependencias.propagar(tarea, estado_anterior, user)
         if tarea.estado == 'hecha' and estado_anterior != 'hecha':
             try:
                 servicios_al_completar(tarea, user)
@@ -171,6 +174,10 @@ class TareaViewSet(viewsets.ModelViewSet):
         hecha = request.data.get('hecha')
         if not isinstance(hecha, bool):
             return Response({'hecha': 'Indicá si está hecha.'}, status=status.HTTP_400_BAD_REQUEST)
+        if tarea.estado == 'bloqueada' and services.esperando(tarea):
+            return Response(
+                {'detail': 'La tarea espera a otras: no se puede avanzar hasta que estén Hechas.'}, status=status.HTTP_400_BAD_REQUEST
+            )
         estado_anterior = tarea.estado
         if sub.hecha != hecha:
             sub.hecha = hecha
@@ -201,9 +208,16 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         page_id, gid, cal_id = instance.notion_page_id, instance.google_event_id, instance.google_calendar_id
+        esperaban = list(instance.desbloquea.all())
         instance.delete()
         notion.al_borrar_tarea(page_id)
         google_calendar.al_borrar_tarea(gid, cal_id)
+        for dep in esperaban:
+            # Sin esa dependencia puede quedar libre.
+            if services.ajustar_por_dependencias(dep) == 'desbloqueada':
+                avisos.tarea_disponible(dep, instance, self.request.user, borrada=True)
+                notion.al_guardar_tarea(dep)
+                google_calendar.al_guardar_tarea(dep)
 
 
 class TareaRecurrenteViewSet(viewsets.ModelViewSet):

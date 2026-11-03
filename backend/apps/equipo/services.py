@@ -40,7 +40,7 @@ def generar_recurrentes() -> int:
                     if p.agrupar_subtareas and p.por_dia > 1:
                         tarea = Tarea.objects.create(
                             titulo=p.titulo, descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
-                            etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
+                            etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p, hora_inicio=p.hora_inicio, hora_fin=p.hora_fin,
                         )
                         prefijo = (p.titulo_subtarea or '').strip() or 'Historia'
                         Subtarea.objects.bulk_create([
@@ -54,7 +54,7 @@ def generar_recurrentes() -> int:
                             tarea = Tarea.objects.create(
                                 titulo=f'{p.titulo} {i}/{p.por_dia}' if p.por_dia > 1 else p.titulo,
                                 descripcion=p.descripcion, cliente_id=p.cliente_id, prioridad=p.prioridad,
-                                etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p,
+                                etiqueta=p.etiqueta, fecha_limite=dia, recurrente=p, hora_inicio=p.hora_inicio, hora_fin=p.hora_fin,
                             )
                             AsignacionTarea.objects.bulk_create([AsignacionTarea(persona=x, tarea=tarea) for x in personas])
                             nuevas.append(tarea)
@@ -74,7 +74,7 @@ def estado_segun_subtareas(tarea, estado):
     Bloqueada, en revisión y el resto no se pisan mientras no se cruce ese umbral.
     """
     marcas = list(tarea.subtareas.values_list('hecha', flat=True))
-    if not marcas:
+    if not marcas or (estado == 'bloqueada' and esperando(tarea)):
         return estado
     if all(marcas):
         return 'hecha'
@@ -95,6 +95,57 @@ def fijar_estado(tarea, estado):
         tarea.completada_en = None
     tarea.save(update_fields=['estado', 'completada_en'])
     return True
+
+
+# Estados a los que no puede pasar una tarea mientras espere a otras.
+ESTADOS_DE_AVANCE = ('en_curso', 'en_revision', 'hecha')
+
+
+def pendientes_de(tarea):
+    """Dependencias que todavía no están Hechas."""
+    if not tarea.pk:
+        return Tarea.objects.none()
+    return tarea.depende_de.exclude(estado='hecha')
+
+
+def esperando(tarea) -> bool:
+    return pendientes_de(tarea).exists()
+
+
+def ajustar_por_dependencias(tarea, avanzo=False):
+    """Bloquea o desbloquea la tarea según sus dependencias. Devuelve 'bloqueada', 'desbloqueada' o None.
+
+    Solo bloquea una que está Por hacer, o una que recién avanzó (`avanzo`, p. ej. desde Notion): una que ya estaba en
+    curso cuando se reabrió una de sus dependencias no se toca. Solo desbloquea las que bloqueó el sistema.
+    """
+    if esperando(tarea):
+        if tarea.estado == 'pendiente' or (avanzo and tarea.estado in ESTADOS_DE_AVANCE):
+            tarea.estado, tarea.completada_en, tarea.bloqueo_auto = 'bloqueada', None, True
+            tarea.save(update_fields=['estado', 'completada_en', 'bloqueo_auto'])
+            return 'bloqueada'
+        return None
+    if not tarea.bloqueo_auto:
+        return None
+    tarea.bloqueo_auto = False
+    if tarea.estado != 'bloqueada':
+        tarea.save(update_fields=['bloqueo_auto'])
+        return None
+    tarea.estado, tarea.completada_en = 'pendiente', None
+    tarea.save(update_fields=['estado', 'completada_en', 'bloqueo_auto'])
+    return 'desbloqueada'
+
+
+def crearia_ciclo(tarea, candidatas) -> bool:
+    """True si `tarea` pasaría a depender (directa o indirectamente) de sí misma."""
+    if not tarea.pk:
+        return False
+    vistos, frontera = set(), {c.pk for c in candidatas}
+    while frontera:
+        if tarea.pk in frontera:
+            return True
+        vistos |= frontera
+        frontera = set(Tarea.depende_de.through.objects.filter(from_tarea_id__in=frontera).values_list('to_tarea_id', flat=True)) - vistos
+    return False
 
 
 @transaction.atomic

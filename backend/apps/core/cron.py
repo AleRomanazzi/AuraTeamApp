@@ -185,9 +185,16 @@ def ejecutar(ahora=None) -> dict:
         EstadoCron.objects.filter(pk=estado.pk).update(ultimo_resumen=hoy)
         _paso(resumen, 'resumen', resumen_diario, hoy)
     _paso(resumen, 'clientes', _tareas_de_clientes, ahora)
+    _paso(resumen, 'notion', _notion)
     _paso(resumen, 'limpieza', limpiar, ahora)
     EstadoCron.objects.filter(pk=estado.pk).update(ultima_corrida=ahora, ultimo_error='\n'.join(resumen.get('errores', [])))
     return resumen
+
+
+def _notion():
+    from apps.integraciones import notion
+
+    return notion.mantenimiento()
 
 
 def _tareas_de_clientes(ahora):

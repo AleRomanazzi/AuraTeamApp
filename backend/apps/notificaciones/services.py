@@ -103,7 +103,8 @@ def al_asignar(tarea, persona_ids, actor=None):
 
 
 def _al_cambiar_estado(tarea, anterior, actor):
-    if tarea.estado == anterior:
+    if tarea.estado == anterior or (tarea.estado == 'bloqueada' and tarea.bloqueo_auto):
+        # Las que bloquea el sistema por sus dependencias no son un problema a revisar.
         return
     nombre = (actor.nombre_display if actor and actor.nombre_display not in ('', 'Yo') else getattr(actor, 'username', '')) or 'Alguien'
     if tarea.estado in ESTADOS_PARA_ADMINS:
@@ -123,6 +124,40 @@ def _al_cambiar_estado(tarea, anterior, actor):
 
 def al_cambiar_estado(tarea, anterior, actor=None):
     _seguro(_al_cambiar_estado, tarea, anterior, actor)
+
+
+def _responsables(tarea):
+    ids = list(tarea.asignaciones.values_list('persona_id', flat=True))
+    if ids:
+        return list(usuarios_de(ids))
+    return list(User.objects.filter(pk=tarea.user_id, is_active=True)) if tarea.user_id else []
+
+
+def _tarea_disponible(tarea, previa, actor, borrada):
+    nombre = (actor.nombre_display if actor and actor.nombre_display not in ('', 'Yo') else getattr(actor, 'username', '')) or ''
+    quien = f' por {nombre}' if nombre else ''
+    motivo = f'Se eliminó «{previa.titulo}», de la que dependía' if borrada else f'Se completó «{previa.titulo}»{quien}'
+    notificar(
+        _responsables(tarea), 'tarea_disponible', f'Ya podés arrancar: {tarea.titulo}',
+        f'{motivo}. {_detalle_tarea(tarea)}'.strip(), url_tarea(tarea), tarea=tarea, email=True, excluir=actor,
+    )
+
+
+def tarea_disponible(tarea, previa, actor=None, borrada=False):
+    """Ya no espera a ninguna tarea (la última pasó a Hecha o se borró): avisa (campana y email) a sus responsables."""
+    _seguro(_tarea_disponible, tarea, previa, actor, borrada)
+
+
+def _dependencia_reabierta(tarea, previa, actor):
+    notificar(
+        _responsables(tarea), 'tarea_estado', f'Se reabrió «{previa.titulo}»',
+        f'«{tarea.titulo}» depende de ella y ya estaba en marcha: revisá si podés seguir.', url_tarea(tarea),
+        tarea=tarea, excluir=actor,
+    )
+
+
+def dependencia_reabierta(tarea, previa, actor=None):
+    _seguro(_dependencia_reabierta, tarea, previa, actor)
 
 
 def _asignadas_en_tanda(tareas, motivo, actor, email):

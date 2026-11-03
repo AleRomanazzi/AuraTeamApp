@@ -96,6 +96,8 @@ class PasoOnboarding(models.Model):
     dias_desde_alta = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(90)])
     etiqueta = models.CharField(max_length=40, default='reuniones')
     accion = models.CharField(max_length=10, choices=ACCIONES_ONBOARDING, blank=True)
+    # Paso que tiene que estar Hecho antes: su tarea nace bloqueada y se libera sola (ver equipo.dependencias).
+    despues_de = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='siguientes')
     activo = models.BooleanField(default=True)
 
     class Meta:

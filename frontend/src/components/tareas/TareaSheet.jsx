@@ -1,14 +1,18 @@
-import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import ProgressBar from '../ui/ProgressBar'
 import { opcionesEtiqueta, useClientes, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
-import { api } from '../../lib/api'
+import { api, getList } from '../../lib/api'
 import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES } from '../../lib/constants'
+import { formatFechaCorta } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
-import { TAREAS, invalidar } from '../../lib/queryKeys'
+import { QK, TAREAS, invalidar } from '../../lib/queryKeys'
 import { confirmar } from '../../store/confirmStore'
+
+const AVANCE = ['en_curso', 'en_revision', 'hecha']
+const estadoLabel = (v) => ESTADOS_TAREA.find((e) => e.value === v)?.label ?? v
 
 const dominio = (url) => {
   try {
@@ -36,11 +40,30 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
     estado: tarea?.estado ?? 'pendiente',
     prioridad: tarea?.prioridad ?? 'media',
     fecha_limite: tarea?.fecha_limite ?? '',
+    fecha_inicio: tarea?.fecha_inicio ?? '',
+    hora_inicio: tarea?.hora_inicio ?? '',
+    hora_fin: tarea?.hora_fin ?? '',
+    depende_de: tarea?.depende_de ?? [],
     etiqueta: tarea?.etiqueta ?? 'historias',
     asignados: tarea?.asignados ?? [],
     links: tarea?.links ?? [],
     subtareas: (tarea?.subtareas ?? []).map((s) => ({ ...s, key: s.id })),
   }))
+  const todas = useQuery({ queryKey: QK.tareas({}), queryFn: () => getList('tareas/') })
+  const porId = useMemo(() => {
+    const m = new Map((tarea?.dependencias ?? []).map((d) => [d.id, d]))
+    for (const t of todas.data ?? []) m.set(t.id, t)
+    return m
+  }, [todas.data, tarea?.dependencias])
+  const pendientes = f.depende_de.map((id) => porId.get(id)).filter((d) => d && d.estado !== 'hecha')
+  // Bloqueo estricto: mientras espere a otras, no se puede avanzar (salvo que ya estuviera en marcha).
+  const trabada = pendientes.length > 0 && ['pendiente', 'bloqueada'].includes(tarea?.estado ?? 'pendiente')
+  const candidatas = useMemo(() => {
+    const elegidas = new Set(f.depende_de)
+    return (todas.data ?? [])
+      .filter((t) => t.id !== tarea?.id && !elegidas.has(t.id) && t.estado !== 'hecha')
+      .sort((a, b) => Number(String(b.cliente ?? '') === String(f.cliente || '')) - Number(String(a.cliente ?? '') === String(f.cliente || '')) || a.titulo.localeCompare(b.titulo))
+  }, [todas.data, f.depende_de, f.cliente, tarea?.id])
   const [link, setLink] = useState({ titulo: '', url: '' })
   const [nuevaSub, setNuevaSub] = useState('')
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
@@ -100,6 +123,9 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
         links: [...f.links, ...pendiente],
         cliente: f.cliente || null,
         fecha_limite: f.fecha_limite || null,
+        fecha_inicio: (f.fecha_limite && f.fecha_inicio) || null,
+        hora_inicio: (f.fecha_limite && f.hora_inicio) || null,
+        hora_fin: (f.fecha_limite && f.hora_inicio && f.hora_fin) || null,
       }
       delete body.key
       if (!puedeReasignar) delete body.asignados
@@ -183,15 +209,38 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
         <div className="tarea-sheet-label">Estado</div>
         <div className="chip-select" role="radiogroup" aria-label="Estado">
           {ESTADOS_TAREA.map((s) => (
-            <button key={s.value} type="button" role="radio" aria-checked={f.estado === s.value} className={`chip chip-estado chip-estado--${s.tag || 'neutral'}${f.estado === s.value ? ' active' : ''}`} onClick={() => setF((x) => ({ ...x, estado: s.value }))}>
+            <button
+              key={s.value}
+              type="button"
+              role="radio"
+              aria-checked={f.estado === s.value}
+              className={`chip chip-estado chip-estado--${s.tag || 'neutral'}${f.estado === s.value ? ' active' : ''}`}
+              disabled={trabada && AVANCE.includes(s.value)}
+              title={trabada && AVANCE.includes(s.value) ? 'Espera a otras tareas' : undefined}
+              onClick={() => setF((x) => ({ ...x, estado: s.value }))}
+            >
               {s.label}
             </button>
           ))}
         </div>
+        {pendientes.length ? (
+          <div className="tarea-espera" role="status">
+            🔒 Espera a {pendientes.map((d) => `«${d.titulo}»`).join(', ')}. Pasa sola a Por hacer (con aviso por mail) cuando {pendientes.length === 1 ? 'esté Hecha' : 'estén Hechas'}.
+          </div>
+        ) : null}
 
         <div className="grid-2 tight tarea-sheet-grid">
           <Field label="Fecha límite">
             <input type="date" value={f.fecha_limite ?? ''} onChange={set('fecha_limite')} />
+          </Field>
+          <Field label="Desde" hint="Opcional, para tareas de varios días.">
+            <input type="date" value={f.fecha_inicio ?? ''} onChange={set('fecha_inicio')} max={f.fecha_limite || undefined} disabled={!f.fecha_limite} />
+          </Field>
+          <Field label="Hora de inicio" hint="Opcional. Con hora, va al calendario con horario.">
+            <input type="time" value={f.hora_inicio ?? ''} onChange={set('hora_inicio')} disabled={!f.fecha_limite} />
+          </Field>
+          <Field label="Hora de fin" hint={f.fecha_inicio && f.hora_inicio ? 'Obligatoria en tareas de varios días.' : 'Opcional (si no, dura 1 hora).'}>
+            <input type="time" value={f.hora_fin ?? ''} onChange={set('hora_fin')} disabled={!f.fecha_limite || !f.hora_inicio} required={Boolean(f.fecha_inicio && f.hora_inicio)} />
           </Field>
           <Field label="Prioridad">
             <select value={f.prioridad} onChange={set('prioridad')}>
@@ -202,7 +251,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               ))}
             </select>
           </Field>
-          <Field label="Calendario" hint="Con fecha, va como día completo a ese calendario de Google.">
+          <Field label="Calendario" hint="Con fecha, va a ese calendario de Google (día completo o con su horario).">
             <select value={f.etiqueta} onChange={set('etiqueta')}>
               {opcionesEtiqueta(etiquetas, f.etiqueta).map((e) => (
                 <option key={e.value} value={e.value}>
@@ -224,6 +273,47 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               ))}
           </div>
         </Field>
+
+        <Field label="Depende de" hint="No puede avanzar hasta que estas tareas estén Hechas.">
+          <div className="tarea-deps">
+            {f.depende_de.map((id) => {
+              const d = porId.get(id)
+              return (
+                <span key={id} className={`chip active tarea-dep${d?.estado === 'hecha' ? ' tarea-dep--hecha' : ''}`}>
+                  {d?.estado === 'hecha' ? '✓' : '🔒'} {d?.titulo ?? `Tarea ${id}`}
+                  <em> · {estadoLabel(d?.estado)}</em>
+                  {editable ? (
+                    <button type="button" className="link-btn down" aria-label={`Quitar «${d?.titulo ?? id}»`} onClick={() => setF((s) => ({ ...s, depende_de: s.depende_de.filter((x) => x !== id) }))}>
+                      ×
+                    </button>
+                  ) : null}
+                </span>
+              )
+            })}
+            {editable ? (
+              <select
+                className="select-sm"
+                value=""
+                aria-label="Agregar una tarea de la que depende"
+                onChange={(e) => {
+                  const id = Number(e.target.value)
+                  if (id) setF((s) => ({ ...s, depende_de: [...s.depende_de, id] }))
+                }}
+              >
+                <option value="">{todas.isLoading ? 'Cargando tareas…' : '+ Agregar tarea previa'}</option>
+                {candidatas.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.titulo} · {t.cliente_nombre || GESTION_INTERNA}
+                    {t.fecha_limite ? ` · ${formatFechaCorta(t.fecha_limite)}` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+        </Field>
+        {tarea?.desbloquea?.length ? (
+          <div className="field-hint tarea-desbloquea">Al terminarla se desbloquea: {tarea.desbloquea.map((d) => `«${d.titulo}»`).join(', ')}.</div>
+        ) : null}
 
         <Field label="Descripción">
           <textarea rows={4} value={f.descripcion} onChange={set('descripcion')} placeholder="Brief, pasos, observaciones…" />

@@ -179,3 +179,28 @@ def test_pegar_link_de_carpeta_cierra_el_paso(api_client, drive_falla):
     assert Tarea.objects.get(cliente_id=cid, paso_onboarding__accion='drive').estado == 'hecha'
     assert api_client.post(f'/api/clientes/{cid}/drive/', {'link': 'cualquier cosa'}, format='json').status_code == 400
     assert api_client.post(f'/api/clientes/{cid}/drive/', {'link': ''}, format='json').data['drive_url'] == ''
+
+
+@pytest.mark.django_db
+def test_pasos_encadenados_nacen_bloqueados_y_se_liberan(api_client, drive_ok):
+    pasos = list(PasoOnboarding.objects.filter(activo=True).order_by('orden', 'id'))
+    primero, segundo = [p for p in pasos if p.accion != 'drive'][:2]
+    paso_drive = next(p for p in pasos if p.accion == 'drive')
+    assert api_client.patch(f'/api/onboarding-pasos/{segundo.id}/', {'despues_de': primero.id}, format='json').status_code == 200
+    # Sin ciclos.
+    assert api_client.patch(f'/api/onboarding-pasos/{primero.id}/', {'despues_de': segundo.id}, format='json').status_code == 400
+    # El paso de Drive después del primero: queda el link pero no se cierra solo.
+    PasoOnboarding.objects.filter(pk=paso_drive.pk).update(despues_de=primero)
+
+    r = api_client.post('/api/clientes/', {'nombre': 'Café Roma', 'fecha_alta': today().isoformat()}, format='json')
+    cliente = Cliente.objects.get(pk=r.data['id'])
+    t1 = Tarea.objects.get(cliente=cliente, paso_onboarding=primero)
+    t2 = Tarea.objects.get(cliente=cliente, paso_onboarding=segundo)
+    td = Tarea.objects.get(cliente=cliente, paso_onboarding=paso_drive)
+    assert t1.estado == 'pendiente' and t2.estado == 'bloqueada' and list(t2.depende_de.all()) == [t1]
+    assert td.estado == 'bloqueada' and td.links
+
+    api_client.patch(f'/api/tareas/{t1.id}/', {'estado': 'hecha'}, format='json')
+    t2.refresh_from_db()
+    td.refresh_from_db()
+    assert t2.estado == 'pendiente' and td.estado == 'pendiente'

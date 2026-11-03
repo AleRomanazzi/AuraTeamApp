@@ -333,13 +333,28 @@ def _va_al_calendario(t: Tarea) -> bool:
     return bool(t.fecha_limite) and t.estado != 'hecha'
 
 
+def _horario_tarea(t: Tarea) -> tuple[dict, dict]:
+    """Día completo (de fecha_inicio, si hay, a fecha_limite) o, con horas, evento con horario. Sin hora de fin dura 1 h."""
+    inicio = t.fecha_inicio or t.fecha_limite
+    if not t.hora_inicio:
+        return {'date': inicio.isoformat()}, {'date': (t.fecha_limite + timedelta(days=1)).isoformat()}
+    desde = datetime.combine(inicio, t.hora_inicio)
+    hasta = datetime.combine(t.fecha_limite, t.hora_fin) if t.hora_fin else desde + timedelta(hours=1)
+    zona = settings.TIME_ZONE
+    return (
+        {'dateTime': desde.isoformat(timespec='seconds'), 'timeZone': zona},
+        {'dateTime': hasta.isoformat(timespec='seconds'), 'timeZone': zona},
+    )
+
+
 def _cuerpo_tarea(t: Tarea) -> dict:
+    inicio, fin = _horario_tarea(t)
     return {
         'summary': t.titulo,
         'description': t.descripcion,
-        'start': {'date': t.fecha_limite.isoformat()},
-        'end': {'date': (t.fecha_limite + timedelta(days=1)).isoformat()},
-        'transparency': 'transparent',
+        'start': inicio,
+        'end': fin,
+        'transparency': 'opaque' if t.hora_inicio else 'transparent',
         'status': 'confirmed',
         'colorId': (t.cliente.google_color or None) if t.cliente else None,
         'extendedProperties': {'private': {'aura_tarea': str(t.pk), 'aura_cliente': str(t.cliente_id or '')}},
@@ -477,6 +492,57 @@ def aplicar_evento(item: dict, cal: CalendarioGoogle, ahora, clientes: list, pri
     return 'actualizados'
 
 
+def _horario_de_evento(item: dict) -> dict | None:
+    """fecha_inicio / fecha_limite / hora_inicio / hora_fin de una tarea según su evento de Google."""
+    ini, fin = item.get('start') or {}, item.get('end') or {}
+    if ini.get('date') and fin.get('date'):
+        desde, hasta = parse_date(ini['date']), parse_date(fin['date']) - timedelta(days=1)
+        if hasta < desde:
+            hasta = desde
+        return {'fecha_inicio': desde if desde < hasta else None, 'fecha_limite': hasta, 'hora_inicio': None, 'hora_fin': None}
+    if not (ini.get('dateTime') and fin.get('dateTime')):
+        return None
+    desde, hasta = timezone.localtime(parse_datetime(ini['dateTime'])), timezone.localtime(parse_datetime(fin['dateTime']))
+    if hasta <= desde:
+        return None
+    mismo_dia = desde.date() == hasta.date()
+    return {
+        'fecha_inicio': None if mismo_dia else desde.date(),
+        'fecha_limite': hasta.date(),
+        'hora_inicio': desde.time().replace(second=0, microsecond=0),
+        'hora_fin': hasta.time().replace(second=0, microsecond=0),
+    }
+
+
+def aplicar_movimiento_tarea(item: dict, tarea_id) -> bool:
+    """Si en Google movieron (o estiraron) el evento de una tarea, le cambia la fecha y el horario en el panel.
+
+    Solo si el panel no tiene cambios sin subir: en ese caso manda el panel y el evento se pisa en el próximo envío.
+    """
+    t = Tarea.objects.select_related('cliente').filter(pk=tarea_id, google_event_id=item['id']).first()
+    if t is None or not _va_al_calendario(t) or not _tarea_al_dia(t):
+        return False
+    nuevo = _horario_de_evento(item)
+    if nuevo is None:
+        return False
+    if nuevo['fecha_inicio'] is None and t.hora_inicio and t.hora_fin is None and nuevo['hora_inicio'] == t.hora_inicio:
+        # Sin hora de fin, en Google dura 1 hora: si la duración sigue siendo esa, no se fija una.
+        fin_defecto = (datetime.combine(nuevo['fecha_limite'], t.hora_inicio) + timedelta(hours=1)).time()
+        if nuevo['hora_fin'] == fin_defecto:
+            nuevo['hora_fin'] = None
+    cambios = [k for k, v in nuevo.items() if getattr(t, k) != v]
+    if not cambios:
+        return False
+    for k in cambios:
+        setattr(t, k, nuevo[k])
+    t.google_huella = _huella_tarea(t)
+    t.save(update_fields=[*cambios, 'google_huella'])
+    from apps.integraciones import notion
+
+    notion.al_guardar_tarea(t)
+    return True
+
+
 def _listar(cal: CalendarioGoogle):
     params = {'singleEvents': 'true', 'maxResults': 250}
     if cal.sync_token:
@@ -516,6 +582,8 @@ def _traer(resumen: dict, ahora):
                 huerfano = tareas.get(item['id']) is None or str(tareas[item['id']]) != aura_tarea
                 if huerfano and not Tarea.objects.filter(pk=aura_tarea if aura_tarea.isdigit() else 0, google_event_id=item['id']).exists():
                     borrar_evento(cal.calendar_id, item['id'])
+                elif not huerfano and aplicar_movimiento_tarea(item, tareas[item['id']]):
+                    resumen['tareas_movidas'] = resumen.get('tareas_movidas', 0) + 1
                 continue
             r = aplicar_evento(item, cal, ahora, clientes, cal.etiqueta in privadas)
             if r:

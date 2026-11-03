@@ -61,6 +61,14 @@ export function formatFechaCorta(value) {
   return formatFecha(value, { day: 'numeric', month: 'short' })
 }
 
+/** Rango y horario de una tarea para las tarjetas: «10 nov – 12 nov · 09:00–18:30». Sin fecha devuelve ''. */
+export function formatHorarioTarea(t) {
+  if (!t?.fecha_limite) return ''
+  const dias = t.fecha_inicio ? `${formatFechaCorta(t.fecha_inicio)} – ${formatFechaCorta(t.fecha_limite)}` : formatFechaCorta(t.fecha_limite)
+  if (!t.hora_inicio) return dias
+  return `${dias} · ${t.hora_inicio}${t.hora_fin ? `–${t.hora_fin}` : ''}`
+}
+
 export function formatFechaHora(value) {
   const d = parseLocalDate(value)
   if (!d) return '—'

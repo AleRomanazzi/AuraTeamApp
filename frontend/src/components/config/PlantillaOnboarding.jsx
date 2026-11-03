@@ -10,7 +10,7 @@ import QueryState from '../ui/QueryState'
 
 const VACIO = { titulo: '', rol: 'cm', dias_desde_alta: 0, etiqueta: 'reuniones' }
 
-function FilaPaso({ paso, etiquetas, onGuardar, onBorrar, onMover, primero, ultimo }) {
+function FilaPaso({ paso, pasos, etiquetas, onGuardar, onBorrar, onMover, primero, ultimo }) {
   const guardarTexto = (campo) => (e) => {
     const valor = campo === 'dias_desde_alta' ? Number(e.target.value || 0) : e.target.value.trim()
     if (valor !== paso[campo] && (campo !== 'titulo' || valor)) onGuardar({ [campo]: valor })
@@ -46,6 +46,21 @@ function FilaPaso({ paso, etiquetas, onGuardar, onBorrar, onMover, primero, ulti
             {e.label}
           </option>
         ))}
+      </select>
+      <select
+        value={paso.despues_de ?? ''}
+        onChange={(e) => onGuardar({ despues_de: Number(e.target.value) || null })}
+        aria-label="Después de"
+        title="La tarea nace bloqueada y se libera sola cuando la del paso previo está Hecha"
+      >
+        <option value="">Sin paso previo</option>
+        {pasos
+          .filter((p) => p.id !== paso.id)
+          .map((p) => (
+            <option key={p.id} value={p.id}>
+              Después de: {p.titulo}
+            </option>
+          ))}
       </select>
       <label className="check-row small" title={paso.accion === 'drive' ? 'Vincula la carpeta del cliente dentro de CLIENTES (o la crea ahí) y se marca hecha' : undefined}>
         <input type="checkbox" checked={paso.activo} onChange={(e) => onGuardar({ activo: e.target.checked })} /> {paso.accion === 'drive' ? '📁 Activo' : 'Activo'}
@@ -95,7 +110,7 @@ export default function PlantillaOnboarding() {
         <span className="dot" /> Plantilla de onboarding de clientes
       </div>
       <p className="muted small">
-        Al dar de alta un cliente, cada paso activo se convierte en una tarea para la persona del rol indicado (la asignada a ese cliente o, para socios, quien lo da de alta), con fecha = alta + días. El paso 📁 vincula sola la
+        Al dar de alta un cliente, cada paso activo se convierte en una tarea para la persona del rol indicado (la asignada a ese cliente o, para socios, quien lo da de alta), con fecha = alta + días. Con «Después de», la tarea nace bloqueada y pasa a Por hacer (con aviso por mail) cuando la del paso previo está Hecha. El paso 📁 vincula sola la
         carpeta del cliente en Mi unidad → CLIENTES (si no existe, la crea ahí).
       </p>
       <QueryState query={q} vacio="La plantilla está vacía.">
@@ -105,6 +120,7 @@ export default function PlantillaOnboarding() {
               <FilaPaso
                 key={p.id}
                 paso={p}
+                pasos={pasos}
                 etiquetas={etiquetas}
                 primero={i === 0}
                 ultimo={i === pasos.length - 1}

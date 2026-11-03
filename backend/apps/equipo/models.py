@@ -56,6 +56,15 @@ class Tarea(models.Model):
     estado = models.CharField(max_length=12, choices=ESTADO_TAREA, default='pendiente')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
     fecha_limite = models.DateField(null=True, blank=True)
+    # Opcionales. Con fecha_inicio la tarea dura del inicio a fecha_limite (que sigue siendo el vencimiento).
+    # Las horas van juntas salvo en una tarea de un solo día, donde alcanza con la de inicio.
+    fecha_inicio = models.DateField(null=True, blank=True)
+    hora_inicio = models.TimeField(null=True, blank=True)
+    hora_fin = models.TimeField(null=True, blank=True)
+    # Tareas que tienen que estar Hechas antes de poder avanzar esta (ver services.revisar_dependencias).
+    depende_de = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='desbloquea')
+    # La pasó a Bloqueada el sistema por sus dependencias (no una persona): solo esas se desbloquean solas.
+    bloqueo_auto = models.BooleanField(default=False)
     links = models.JSONField(default=list, blank=True)
     completada_en = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True, null=True)
@@ -114,6 +123,9 @@ class TareaRecurrente(models.Model):
     titulo_subtarea = models.CharField(max_length=80, blank=True)
     etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
+    # Opcional: las tareas generadas llevan este horario (y van con hora a Google y Notion).
+    hora_inicio = models.TimeField(null=True, blank=True)
+    hora_fin = models.TimeField(null=True, blank=True)
     activa = models.BooleanField(default=True)
     generada_hasta = models.DateField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True)

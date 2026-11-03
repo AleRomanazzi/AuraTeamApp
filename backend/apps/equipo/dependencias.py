@@ -7,7 +7,7 @@ un fallo de esas integraciones o de los avisos nunca impide guardar.
 import logging
 
 from .models import Tarea
-from .services import ajustar_por_dependencias
+from .services import ajustar_por_dependencias, heredar_links
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ def propagar(tarea, anterior, actor=None, sincronizar=True) -> list:
     for dep in Tarea.objects.filter(depende_de=tarea).select_related('cliente'):
         try:
             resultado = ajustar_por_dependencias(dep)
+            # Lo que entregó la previa (links al material) pasa a la que sigue.
+            if tarea.estado == 'hecha':
+                heredar_links(dep, [tarea])
         except Exception:
             logger.exception('No se pudo revisar la dependencia de la tarea %s', dep.pk)
             continue

@@ -12,9 +12,8 @@ from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
 from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Subtarea, Tarea, TareaRecurrente
-from .services import ESTADOS_DE_AVANCE, ajustar_por_dependencias, crearia_ciclo
+from .services import ESTADOS_DE_AVANCE, MAX_LINKS_TAREA, ajustar_por_dependencias, crearia_ciclo, heredar_links
 
-MAX_LINKS_TAREA = 20
 MAX_POR_DIA = 10
 MAX_TAREAS_PLAN = 100
 MAX_SUBTAREAS = 30
@@ -296,6 +295,7 @@ class TareaSerializer(serializers.ModelSerializer):
         tarea = Tarea.objects.create(**validated_data)
         if dependencias:
             tarea.depende_de.set(dependencias)
+            heredar_links(tarea, dependencias)
         for p in personas:
             AsignacionTarea.objects.create(persona=p, tarea=tarea)
         cambio = False
@@ -327,6 +327,7 @@ class TareaSerializer(serializers.ModelSerializer):
                     AsignacionTarea.objects.create(persona=p, tarea=instance)
         if dependencias is not None:
             instance.depende_de.set(dependencias)
+            heredar_links(instance, dependencias)
         cambio = self._reemplazar_subtareas(instance, subtareas) if subtareas is not None else False
         self._cerrar_progreso(instance, estado_anterior, cambio)
         ajustar_por_dependencias(instance)

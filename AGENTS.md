@@ -57,7 +57,9 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
  La sincronización incremental de Notion sube de a tandas cualquier tarea sin página, no solo las recurrentes.
     Dependencias (`Tarea.depende_de`, `services.ajustar_por_dependencias`, `dependencias.propagar`): mientras espere a
     tareas no Hechas queda `bloqueada` con `bloqueo_auto` y no puede avanzar (400 en el panel; desde Notion vuelve a
-    Bloqueada). Cuando la última pasa a Hecha (o se borra) vuelve a Por hacer y avisa por mail a sus responsables.
+    Bloqueada). Si alguien la deja Bloqueada mientras espera, cuenta como bloqueo automático. Cuando la última pasa a Hecha (o se
+    borra) vuelve a Por hacer y avisa por mail a sus responsables. Al pasar a Hecha (o al vincular una ya Hecha), sus
+    `links` se suman a los de la que depende (`heredar_links`, sin repetir URLs).
     Sin ciclos. En Notion van como la relación «Bloqueada por» (dual con «Bloquea», en las dos bases); las que Notion no
     puede mostrar (previa sin página o de la otra base) se conservan en el panel. Los pasos de onboarding
     (`PasoOnboarding.despues_de`) y las filas del Plan del mes (`despues_de`: índice de una fila anterior) se encadenan.

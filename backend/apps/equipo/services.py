@@ -11,6 +11,8 @@ from apps.finanzas.models import CATEGORIA_HONORARIOS, Categoria, Transaccion
 
 from .models import AsignacionTarea, Liquidacion, Subtarea, Tarea, TareaRecurrente
 
+MAX_LINKS_TAREA = 20
+
 # Las recurrentes cubren hasta fin del mes en que cae hoy + DIAS_RECURRENTES (así el mes siguiente queda armado desde
 # su última semana). Notion y Google las reciben de a tandas en las siguientes sincronizaciones.
 DIAS_RECURRENTES = 7
@@ -116,9 +118,15 @@ def ajustar_por_dependencias(tarea, avanzo=False):
     """Bloquea o desbloquea la tarea según sus dependencias. Devuelve 'bloqueada', 'desbloqueada' o None.
 
     Solo bloquea una que está Por hacer, o una que recién avanzó (`avanzo`, p. ej. desde Notion): una que ya estaba en
-    curso cuando se reabrió una de sus dependencias no se toca. Solo desbloquea las que bloqueó el sistema.
+    curso cuando se reabrió una de sus dependencias no se toca. Solo desbloquea las que bloqueó el sistema; una que
+    alguien dejó Bloqueada mientras espera a otras cuenta como bloqueada por ellas.
     """
     if esperando(tarea):
+        if tarea.estado == 'bloqueada':
+            if not tarea.bloqueo_auto:
+                tarea.bloqueo_auto = True
+                tarea.save(update_fields=['bloqueo_auto'])
+            return None
         if tarea.estado == 'pendiente' or (avanzo and tarea.estado in ESTADOS_DE_AVANCE):
             tarea.estado, tarea.completada_en, tarea.bloqueo_auto = 'bloqueada', None, True
             tarea.save(update_fields=['estado', 'completada_en', 'bloqueo_auto'])
@@ -133,6 +141,26 @@ def ajustar_por_dependencias(tarea, avanzo=False):
     tarea.estado, tarea.completada_en = 'pendiente', None
     tarea.save(update_fields=['estado', 'completada_en', 'bloqueo_auto'])
     return 'desbloqueada'
+
+
+def heredar_links(tarea, previas) -> bool:
+    """Suma a `tarea` los links de las previas Hechas que todavía no tiene. True si agregó alguno."""
+    links = list(tarea.links or [])
+    urls = {l.get('url') for l in links}
+    for previa in previas:
+        if previa.estado != 'hecha':
+            continue
+        for link in previa.links or []:
+            if len(links) >= MAX_LINKS_TAREA:
+                break
+            if link.get('url') and link['url'] not in urls:
+                links.append({'titulo': link.get('titulo') or previa.titulo[:120], 'url': link['url']})
+                urls.add(link['url'])
+    if len(links) == len(tarea.links or []):
+        return False
+    tarea.links = links
+    tarea.save(update_fields=['links'])
+    return True
 
 
 def crearia_ciclo(tarea, candidatas) -> bool:

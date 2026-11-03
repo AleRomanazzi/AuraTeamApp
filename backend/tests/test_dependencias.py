@@ -96,15 +96,6 @@ def test_reabrir_la_previa_vuelve_a_bloquear_solo_las_por_hacer(api_client, sin_
 
 
 @pytest.mark.django_db
-def test_bloqueo_manual_no_se_desbloquea_solo(api_client, sin_sync):
-    previa = _crear(api_client, 'Guion')
-    tarea = _crear(api_client, 'Edición', estado='bloqueada', depende_de=[previa['id']])
-    assert not tarea['bloqueo_auto']
-    api_client.patch(f'/api/tareas/{previa["id"]}/', {'estado': 'hecha'}, format='json')
-    assert Tarea.objects.get(pk=tarea['id']).estado == 'bloqueada'
-
-
-@pytest.mark.django_db
 def test_borrar_la_previa_desbloquea(api_client, sin_sync):
     previa = _crear(api_client, 'Guion')
     tarea = _crear(api_client, 'Edición', depende_de=[previa['id']])
@@ -148,3 +139,44 @@ def test_evento_de_google_segun_horario():
     t.fecha_inicio, t.hora_fin = None, None
     inicio, fin = google_calendar._horario_tarea(t)
     assert inicio['dateTime'] == '2026-11-12T09:00:00' and fin['dateTime'] == '2026-11-12T10:00:00'
+
+
+@pytest.mark.django_db
+def test_creada_bloqueada_a_mano_se_desbloquea_al_completar_la_previa(api_client, sin_sync):
+    previa = _crear(api_client, 'Guion')
+    tarea = _crear(api_client, 'Edición', estado='bloqueada', depende_de=[previa['id']])
+    assert tarea['estado'] == 'bloqueada' and tarea['bloqueo_auto']
+
+    api_client.patch(f'/api/tareas/{previa["id"]}/', {'estado': 'hecha'}, format='json')
+    tarea = Tarea.objects.get(pk=tarea['id'])
+    assert tarea.estado == 'pendiente' and not tarea.bloqueo_auto
+
+
+@pytest.mark.django_db
+def test_bloqueada_sin_dependencias_no_se_toca(api_client, sin_sync):
+    tarea = _crear(api_client, 'Edición', estado='bloqueada')
+    assert tarea['estado'] == 'bloqueada' and not tarea['bloqueo_auto']
+
+
+@pytest.mark.django_db
+def test_hereda_los_links_de_la_previa_al_completarse(api_client, sin_sync):
+    previa = _crear(api_client, 'Guion', links=[{'titulo': 'Guion final', 'url': 'https://docs.google.com/g'}])
+    tarea = _crear(
+        api_client, 'Edición', depende_de=[previa['id']], links=[{'titulo': 'Brief', 'url': 'https://drive.google.com/b'}]
+    )
+    assert len(Tarea.objects.get(pk=tarea['id']).links) == 1
+
+    api_client.patch(
+        f'/api/tareas/{previa["id"]}/',
+        {'estado': 'hecha', 'links': [{'titulo': '', 'url': 'https://docs.google.com/g'}, {'titulo': 'Brief', 'url': 'https://drive.google.com/b'}]},
+        format='json',
+    )
+    links = Tarea.objects.get(pk=tarea['id']).links
+    assert links == [
+        {'titulo': 'Brief', 'url': 'https://drive.google.com/b'},
+        {'titulo': 'Guion', 'url': 'https://docs.google.com/g'},
+    ]
+
+    # Una que se crea después, sobre una previa ya Hecha, los recibe al vincularla.
+    otra = _crear(api_client, 'Publicación', depende_de=[previa['id']])
+    assert [l['url'] for l in Tarea.objects.get(pk=otra['id']).links] == ['https://docs.google.com/g', 'https://drive.google.com/b']

@@ -759,11 +759,15 @@ def mantenimiento() -> dict:
     """Paso del cron: saca lo que sobra en Notion y sube lo que entró en la ventana (p. ej. el sábado)."""
     if not configurado():
         return {}
+    resumen = {'archivadas': 0, 'enviadas': 0}
     try:
-        return {'archivadas': archivar(), 'enviadas': enviar_pendientes()}
+        resumen['archivadas'] = archivar()
+        resumen['enviadas'] = enviar_pendientes()
     except NotionError as e:
+        # Lo archivado queda hecho; la subida se reintenta en la corrida siguiente.
         registrar_error(str(e))
-        raise
+        resumen['error'] = str(e)[:300]
+    return resumen
 
 
 def _sin_pagina(sin_privadas=False):
@@ -895,10 +899,11 @@ def sincronizar(completa=False, cursor=None) -> dict:
                 enviar_tarea(tarea)
                 resumen['enviadas'] += 1
         else:
-            resumen['enviadas'] = enviar_pendientes(bool(sin_leer))
-            resumen['pendientes'] = _sin_pagina(bool(sin_leer)).count()
+            # Primero se archiva: si Notion está lleno, subir falla y no debe impedir liberar espacio.
             if not completa:
                 resumen['archivadas'] = archivar(LIMITE_ARCHIVO_INCREMENTAL)
+            resumen['enviadas'] = enviar_pendientes(bool(sin_leer))
+            resumen['pendientes'] = _sin_pagina(bool(sin_leer)).count()
             if completa and resumen['pendientes']:
                 resumen['continuar'] = True
                 resumen['cursor'] = cursor

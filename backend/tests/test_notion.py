@@ -497,3 +497,25 @@ def test_hechas_viejas_y_recurrentes_futuras_salen_de_notion_sin_borrarse(api_cl
     api_client.patch(f'/api/tareas/{tarea.id}/', {'estado': 'en_curso'}, format='json')
     tarea.refresh_from_db()
     assert tarea.notion_page_id and tarea.notion_page_id != pid
+
+
+@pytest.mark.django_db
+def test_con_notion_lleno_igual_se_archiva(api_client, falso, monkeypatch):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    hecha = api_client.post('/api/tareas/', {'titulo': 'Grilla', 'estado': 'hecha'}, format='json').data
+    Tarea.objects.filter(pk=hecha['id']).update(completada_en=timezone.now() - timedelta(days=8))
+    pid = Tarea.objects.get(pk=hecha['id']).notion_page_id
+    Tarea.objects.create(titulo='Sin página')
+    original = falso.__call__
+
+    def lleno(method, url, **kw):
+        if method == 'POST' and url.endswith('/pages'):
+            return httpx.Response(400, json={'code': 'validation_error', 'message': 'Your workspace has used all of its free blocks.'})
+        return original(method, url, **kw)
+
+    monkeypatch.setattr(httpx, 'request', lleno)
+    r = notion.mantenimiento()
+    assert r['archivadas'] == 1 and r['error'] and falso.paginas[pid]['in_trash']

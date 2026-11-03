@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
 from django.db.models import Q
@@ -194,6 +194,9 @@ def pagar_liquidacion(liq: Liquidacion, *, fecha=None, medio_pago='', comprobant
     liq.medio_pago = medio_pago
     liq.comprobante = comprobante
     liq.save()
+    from apps.notificaciones.services import pago_registrado
+
+    transaction.on_commit(lambda: pago_registrado(liq))
     return liq
 
 
@@ -210,3 +213,26 @@ def revertir_liquidacion(liq: Liquidacion) -> Liquidacion:
     if tx is not None:
         tx.delete()
     return liq
+
+
+# Una liquidación aprobada o pendiente que lleva estos días sin pagarse avisa a los admins.
+DIAS_LIQUIDACION_ATRASADA = 7
+
+
+def liquidaciones_sin_pagar():
+    return Liquidacion.objects.filter(estado__in=('pendiente', 'aprobada')).select_related('persona', 'cliente').order_by('periodo', 'creado')
+
+
+def avisos_de_liquidaciones(hoy) -> int:
+    """A los admins, una vez por liquidación: las que llevan DIAS_LIQUIDACION_ATRASADA días sin pagar."""
+    from apps.notificaciones.services import admins, notificar
+    from apps.servicios.services import pesos
+
+    limite = timezone.make_aware(datetime.combine(hoy - timedelta(days=DIAS_LIQUIDACION_ATRASADA), time.max))
+    creadas = 0
+    for liq in liquidaciones_sin_pagar().filter(creado__lte=limite):
+        creadas += notificar(
+            admins(), 'pago_equipo', f'Falta pagarle a {liq.persona.nombre}', f'{liq.concepto} ({liq.periodo}) · {pesos(liq.total)}.',
+            '/pagos-equipo', clave=f'liq-atrasada:{liq.pk}',
+        )
+    return creadas

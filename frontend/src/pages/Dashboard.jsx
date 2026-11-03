@@ -76,6 +76,100 @@ function EquipoHoyCard() {
   )
 }
 
+const FILAS_PROYECCION = [
+  ['ingresos', 'cobrado', 'Ya cobrado'],
+  ['ingresos', 'a_cobrar', 'Cobros por cobrar'],
+  ['ingresos', 'sin_generar', 'Contratos (cobro sin generar)'],
+  ['ingresos', 'atrasado', 'Deuda de meses anteriores'],
+  ['ingresos', 'otros', 'Otros ingresos'],
+  ['ingresos', 'total', 'Total ingresos', true],
+  ['egresos', 'suscripciones_pagadas', 'Suscripciones pagadas'],
+  ['egresos', 'suscripciones_pendientes', 'Suscripciones por pagar'],
+  ['egresos', 'equipo_pagado', 'Equipo pagado'],
+  ['egresos', 'equipo_a_pagar', 'Equipo por pagar'],
+  ['egresos', 'equipo_estimado', 'Equipo (estimado)'],
+  ['egresos', 'otros_gastado', 'Otros gastos'],
+  ['egresos', 'otros_estimado', 'Otros gastos (estimado)'],
+  ['egresos', 'total', 'Total egresos', true],
+]
+
+function ProyeccionCard() {
+  const [meses, setMeses] = useState(3)
+  const q = useQuery({ queryKey: QK.proyeccion(meses), queryFn: () => api.get('finanzas/proyeccion/', { params: { meses } }).then((r) => r.data) })
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-title proyeccion-head">
+        <span>
+          <span className="dot" style={{ background: 'var(--accent)' }} /> Flujo de caja proyectado
+        </span>
+        <select className="select-sm" aria-label="Meses a proyectar" value={meses} onChange={(e) => setMeses(Number(e.target.value))}>
+          {[2, 3, 6].map((n) => (
+            <option key={n} value={n}>
+              {n} meses
+            </option>
+          ))}
+        </select>
+      </div>
+      <QueryState query={q}>
+        {(d) => {
+          const visibles = FILAS_PROYECCION.filter(([g, k, , total]) => total || d.meses.some((m) => Number(m[g][k])))
+          return (
+            <>
+              <div className="table-scroll">
+                <table className="proyeccion">
+                  <thead>
+                    <tr>
+                      <th />
+                      {d.meses.map((m, i) => (
+                        <th key={m.periodo} className="num">
+                          {monthLabel(m.periodo)}
+                          {i === 0 ? <span className="muted small"> (en curso)</span> : null}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibles.map(([g, k, label, total]) => (
+                      <tr key={`${g}-${k}`} className={total ? 'proyeccion-total' : ''}>
+                        <td>{label}</td>
+                        {d.meses.map((m) => (
+                          <td key={m.periodo} className={`num mono${total ? (g === 'ingresos' ? ' up' : ' down') : ''}`}>
+                            {fmtCorto(m[g][k])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                    <tr className="proyeccion-total">
+                      <td>Resultado del mes</td>
+                      {d.meses.map((m) => (
+                        <td key={m.periodo} className={`num mono ${Number(m.neto) >= 0 ? 'up' : 'down'}`}>
+                          {fmtCorto(m.neto)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <td>Acumulado</td>
+                      {d.meses.map((m) => (
+                        <td key={m.periodo} className={`num mono ${Number(m.acumulado) >= 0 ? 'up' : 'down'}`}>
+                          {fmtCorto(m.acumulado)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted small" style={{ marginTop: 8 }}>
+                Los estimados salen del promedio de los últimos {d.promedios.meses} meses: equipo {fmt(d.promedios.equipo)} y otros gastos {fmt(d.promedios.otros_egresos)} por mes. Los
+                pagos al equipo dejan de estimarse a medida que se cargan los repartos. Las suscripciones en dólares se proyectan con el monto cargado.
+              </p>
+            </>
+          )
+        }}
+      </QueryState>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const [mes, setMes] = useState(currentMonth)
   const navigate = useNavigate()
@@ -201,6 +295,8 @@ export default function Dashboard() {
                 <Proximos items={d.proximos_vencimientos} />
               </div>
             </div>
+
+            <ProyeccionCard />
 
             <div className="grid-2">
               <div className="card">

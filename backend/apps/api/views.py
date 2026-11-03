@@ -170,6 +170,21 @@ class DashboardView(APIView):
         )
 
 
+class ProyeccionView(APIView):
+    """Flujo de caja proyectado de los próximos meses (solo admins)."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from apps.finanzas.proyeccion import proyectar
+
+        try:
+            meses = min(max(int(request.query_params.get('meses', 3)), 1), 6)
+        except ValueError:
+            meses = 3
+        return Response(proyectar(today(), meses))
+
+
 class MiPanelView(APIView):
     """Resumen para cualquier usuario: sus tareas, sus pagos y próximos eventos."""
 
@@ -181,6 +196,7 @@ class MiPanelView(APIView):
         from apps.calendario.views import eventos_visibles
         from apps.equipo.serializers import LiquidacionSerializer, TareaSerializer
         from apps.equipo.services import generar_recurrentes
+        from apps.servicios.services import suscripciones_de
 
         from apps.core import cron
 
@@ -206,6 +222,7 @@ class MiPanelView(APIView):
                 'persona': {'id': persona.id, 'nombre': persona.nombre} if persona else None,
                 'tareas': TareaSerializer(tareas, many=True).data,
                 'liquidaciones': LiquidacionSerializer(liqs, many=True).data,
+                'suscripciones': suscripciones_de(persona, hoy) if persona else [],
                 'eventos': EventoUnicoSerializer(eventos, many=True).data,
             }
         )

@@ -32,7 +32,7 @@ from apps.finanzas.views import AdjuntoViewSet, CategoriaViewSet, TransaccionVie
 from apps.servicios.views import ServicioViewSet
 from apps.stats.views import AnalisisStatsViewSet, ImagenAnalisisViewSet
 
-from .views import DashboardView, MeConfigView, MeDataDeleteView, MeExportView, MeImportView, MiPanelView
+from .views import DashboardView, MeConfigView, MeDataDeleteView, MeExportView, MeImportView, MiPanelView, ProyeccionView
 
 router = DefaultRouter()
 router.register('categorias', CategoriaViewSet, basename='categoria')
@@ -60,6 +60,7 @@ urlpatterns = [
     path('equipo/seguimiento/', SeguimientoView.as_view(), name='api-seguimiento'),
     path('mi-panel/', MiPanelView.as_view(), name='api-mi-panel'),
     path('rentabilidad/', RentabilidadView.as_view(), name='api-rentabilidad'),
+    path('finanzas/proyeccion/', ProyeccionView.as_view(), name='api-proyeccion'),
     path('calendario/vencimientos/', VencimientosView.as_view(), name='api-vencimientos'),
     path('calendario/google/', GoogleCalendarEstadoView.as_view(), name='api-calendario-google'),
     path('calendario/google/sincronizar/', GoogleCalendarSincronizarView.as_view(), name='api-calendario-google-sync'),

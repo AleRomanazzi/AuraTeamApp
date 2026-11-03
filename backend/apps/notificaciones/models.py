@@ -11,6 +11,7 @@ TIPOS = [
     ('tarea_vencida', 'Tarea vencida'),
     ('servicio', 'Pago de servicio'),
     ('aporte', 'Aporte a un servicio'),
+    ('pago_equipo', 'Pago al equipo'),
     ('cliente', 'Clientes'),
     ('sistema', 'Sistema'),
 ]

@@ -2,6 +2,7 @@ export const QK = {
   me: ['me'],
   dashboard: (mes) => ['dashboard', mes],
   miPanel: ['mi-panel'],
+  proyeccion: (meses) => ['proyeccion', meses],
   categorias: ['categorias'],
   transacciones: (params) => ['transacciones', params],
   clientes: ['clientes'],
@@ -41,7 +42,7 @@ export const QK = {
 }
 
 /** Grupos de datos que se ven afectados por un movimiento de dinero. */
-export const DINERO = ['dashboard', 'transacciones', 'cobros', 'liquidaciones', 'clientes', 'rentabilidad', 'servicios', 'vencimientos', 'mi-panel']
+export const DINERO = ['dashboard', 'transacciones', 'cobros', 'liquidaciones', 'clientes', 'rentabilidad', 'servicios', 'vencimientos', 'mi-panel', 'proyeccion']
 export const TAREAS = ['tareas', 'dashboard', 'mi-panel', 'vencimientos', 'notificaciones', 'seguimiento']
 
 export function invalidar(qc, grupos) {

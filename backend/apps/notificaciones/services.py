@@ -160,6 +160,41 @@ def dependencia_reabierta(tarea, previa, actor=None):
     _seguro(_dependencia_reabierta, tarea, previa, actor)
 
 
+def _pago_registrado(liq):
+    from apps.finanzas.models import MEDIO_PAGO_CHOICES
+    from apps.servicios.services import pesos
+
+    from .email import enviar_seguro, lista, parrafo, plantilla
+
+    usuarios = list(usuarios_de([liq.persona_id]))
+    if not usuarios:
+        return
+    titulo = f'Te pagamos {pesos(liq.total)}'
+    url = f'/pagos-equipo/{liq.pk}/recibo'
+    medio = dict(MEDIO_PAGO_CHOICES).get(liq.medio_pago, '')
+    detalle = [f'Concepto: {liq.concepto}', f'Período: {liq.periodo}', f'Monto: {pesos(liq.total)}']
+    if liq.cliente_id:
+        detalle.insert(1, f'Cliente: {liq.cliente.nombre}')
+    if liq.fecha_pago:
+        detalle.append(f'Fecha: {fecha_corta(liq.fecha_pago)}/{liq.fecha_pago.year}')
+    if medio:
+        detalle.append(f'Medio: {medio}')
+    if liq.comprobante:
+        detalle.append(f'Comprobante: {liq.comprobante}')
+    for u in usuarios:
+        if not notificar([u], 'pago_equipo', titulo, f'{liq.concepto} · {liq.periodo}', url, clave=f'liq-pagada:{liq.pk}:{liq.fecha_pago}'):
+            continue
+        if u.notif_email and u.email:
+            html = plantilla(titulo, [parrafo('Registramos este pago a tu nombre:'), lista(detalle)], ('Ver el recibo', url))
+            if enviar_seguro(u.email, f'{titulo} · AuraTeam', html):
+                Notificacion.objects.filter(usuario=u, clave=f'liq-pagada:{liq.pk}:{liq.fecha_pago}').update(email_enviado=True)
+
+
+def pago_registrado(liq):
+    """La liquidación quedó pagada: aviso y mail con el detalle (a modo de recibo) a la persona."""
+    _seguro(_pago_registrado, liq)
+
+
 def _asignadas_en_tanda(tareas, motivo, actor, email):
     por_persona = defaultdict(list)
     for t in tareas:

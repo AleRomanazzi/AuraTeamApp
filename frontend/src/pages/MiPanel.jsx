@@ -6,7 +6,7 @@ import Tag from '../components/ui/Tag'
 import { useMe } from '../hooks/useData'
 import { api } from '../lib/api'
 import { ESTADOS_LIQUIDACION, ESTADOS_TAREA, PRIORIDADES, labelDe } from '../lib/constants'
-import { fmt, formatFechaCorta, formatFechaHora, monthLabel } from '../lib/format'
+import { fmt, formatFechaCorta, formatFechaHora, monthLabel, todayISO } from '../lib/format'
 import { notifyError } from '../lib/notify'
 import { QK, invalidar } from '../lib/queryKeys'
 
@@ -22,7 +22,7 @@ export default function MiPanel() {
 
   return (
     <>
-      <PageHeader titulo={`Hola, ${me?.persona_nombre || me?.first_name || me?.username}`} subtitulo="Tus tareas, pagos y agenda" />
+      <PageHeader titulo={`Hola, ${me?.persona_nombre || me?.first_name || me?.username}`} subtitulo="Tus tareas, pagos, suscripciones y agenda" />
       <QueryState query={q}>
         {(d) =>
           !d.persona ? (
@@ -97,6 +97,36 @@ export default function MiPanel() {
                     ))
                   )}
                 </div>
+                {d.suscripciones?.length ? (
+                  <div className="card">
+                    <div className="card-title">
+                      <span className="dot" style={{ background: 'var(--accent3)' }} /> Mis suscripciones
+                    </div>
+                    {d.suscripciones.map((s) => (
+                      <div key={s.id} className="list-row">
+                        <div className="list-row-main">
+                          <div className="list-row-title">{s.nombre}</div>
+                          <div className="list-row-sub">
+                            {s.rol === 'pagas' ? 'La pagás vos' : `Tu parte${s.pagador ? `, se la transferís a ${s.pagador}` : ''}`}
+                            {s.vencimiento ? ` · ${s.al_dia ? 'próximo vencimiento' : 'vence'} ${formatFechaCorta(s.vencimiento)}` : ''}
+                            {!s.al_dia && s.tarea ? (
+                              <>
+                                {' · '}
+                                <Link to={`/tareas?tarea=${s.tarea}`}>{s.rol === 'pagas' ? 'Marcar pagada' : 'Marcar transferida'}</Link>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="list-row-side">
+                          <div className="mono">{fmt(s.monto)}</div>
+                          <Tag color={s.al_dia ? 'green' : s.vencimiento && s.vencimiento < todayISO() ? 'red' : 'yellow'}>
+                            {s.al_dia ? 'Al día' : s.vencimiento && s.vencimiento < todayISO() ? 'Vencida' : 'Pendiente'}
+                          </Tag>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="card">
                   <div className="card-title">
                     <span className="dot" style={{ background: 'var(--accent2)' }} /> Próximos 14 días

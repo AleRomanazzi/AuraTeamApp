@@ -122,6 +122,10 @@ def resumen_diario(hoy) -> int:
     revision = list(Tarea.objects.filter(estado='en_revision').select_related('cliente')[:15])
     bloqueadas = list(Tarea.objects.filter(estado='bloqueada').select_related('cliente')[:15])
     servicios = _servicios_a_pagar(hoy)
+    from apps.equipo.services import liquidaciones_sin_pagar
+    from apps.servicios.services import pesos
+
+    sin_pagar = list(liquidaciones_sin_pagar())
 
     for u in admins():
         if not (u.notif_email and u.email):
@@ -135,9 +139,12 @@ def resumen_diario(hoy) -> int:
             bloques += [correo.subtitulo(f'Bloqueadas ({len(bloqueadas)})'), correo.lista(_titulos(bloqueadas, 10))]
         if servicios:
             bloques += [correo.subtitulo('Servicios a pagar'), correo.lista(servicios)]
+        if sin_pagar:
+            bloques += [correo.subtitulo(f'Pagos al equipo sin pagar ({len(sin_pagar)} · {pesos(sum(l.total for l in sin_pagar))})'),
+                        correo.lista([f'{l.persona.nombre}: {l.concepto} ({l.periodo}) · {pesos(l.total)}' for l in sin_pagar[:10]])]
         bloques += _bloques_tareas(por_usuario.get(u, []), hoy)
         if not bloques:
-            bloques = [correo.parrafo('Todo al día: no hay tareas vencidas, en revisión ni pagos próximos.')]
+            bloques = [correo.parrafo('Todo al día: no hay tareas vencidas, en revisión ni pagos pendientes.')]
         html = correo.plantilla(f'Resumen de la agencia · {dia}', bloques, ('Ver Equipo hoy', '/equipo-hoy'))
         enviados += correo.enviar_seguro(u.email, f'Resumen AuraTeam · {dia}', html)
     return enviados
@@ -164,7 +171,8 @@ def _paso(resumen, nombre, fn, *args):
 
 def _pasos_livianos(resumen, ahora):
     from apps.equipo.services import generar_recurrentes
-    from apps.servicios.services import avisos_de_servicios, generar_tareas_de_servicios
+    from apps.equipo.services import avisos_de_liquidaciones
+    from apps.servicios.services import avisos_de_servicios, generar_tareas_de_servicios, recordatorios_de_servicios
 
     hoy = timezone.localdate(ahora)
     _paso(resumen, 'recurrentes', generar_recurrentes)
@@ -172,6 +180,8 @@ def _pasos_livianos(resumen, ahora):
     if timezone.localtime(ahora).hour >= HORA_AVISOS:
         _paso(resumen, 'avisos', avisos_de_deadlines, hoy)
         _paso(resumen, 'avisos_servicios', avisos_de_servicios, hoy)
+        _paso(resumen, 'recordatorios_servicios', recordatorios_de_servicios, hoy)
+        _paso(resumen, 'avisos_liquidaciones', avisos_de_liquidaciones, hoy)
 
 
 def ejecutar(ahora=None) -> dict:

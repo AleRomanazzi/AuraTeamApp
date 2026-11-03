@@ -9,35 +9,42 @@ from apps.finanzas.models import CATEGORIA_FEE, Categoria, Transaccion
 from .models import AjustePrecio, Cobro, Contrato
 
 
-def generar_cobros(mes: str, user=None) -> dict:
-    """Crea los cobros del mes para cada contrato activo que corresponda. Es idempotente."""
-    inicio, fin, periodo = parse_mes(mes, required=True)
+def contratos_del_mes(inicio, fin) -> list:
+    """[(contrato, monto)] de los contratos activos que cobran en ese mes y todavía no tienen su cobro generado."""
+    periodo = f'{inicio.year:04d}-{inicio.month:02d}'
     contratos = (
         Contrato.objects.filter(activo=True, cliente__estado='activo', fecha_inicio__lte=fin)
         .select_related('cliente')
         .prefetch_related('ajustes')
     )
     existentes = set(Cobro.objects.filter(periodo=periodo, contrato__isnull=False).values_list('contrato_id', flat=True))
-    creados = []
+    salida = []
     for c in contratos:
-        if c.id in existentes:
-            continue
-        if c.fecha_fin and c.fecha_fin < inicio:
+        if c.id in existentes or (c.fecha_fin and c.fecha_fin < inicio):
             continue
         if not aplica_en_mes(c.fecha_inicio, c.periodicidad, inicio.year, inicio.month):
             continue
-        creados.append(
-            Cobro(
-                cliente=c.cliente,
-                contrato=c,
-                periodo=periodo,
-                concepto=c.concepto,
-                monto=c.monto_para(inicio, list(c.ajustes.all())),
-                vencimiento=fecha_en_mes(inicio.year, inicio.month, c.dia_vencimiento),
-            )
+        salida.append((c, c.monto_para(inicio, list(c.ajustes.all()))))
+    return salida
+
+
+def generar_cobros(mes: str, user=None) -> dict:
+    """Crea los cobros del mes para cada contrato activo que corresponda. Es idempotente."""
+    inicio, fin, periodo = parse_mes(mes, required=True)
+    existentes = Cobro.objects.filter(periodo=periodo, contrato__isnull=False).count()
+    creados = [
+        Cobro(
+            cliente=c.cliente,
+            contrato=c,
+            periodo=periodo,
+            concepto=c.concepto,
+            monto=monto,
+            vencimiento=fecha_en_mes(inicio.year, inicio.month, c.dia_vencimiento),
         )
+        for c, monto in contratos_del_mes(inicio, fin)
+    ]
     Cobro.objects.bulk_create(creados)
-    return {'periodo': periodo, 'creados': len(creados), 'existentes': len(existentes)}
+    return {'periodo': periodo, 'creados': len(creados), 'existentes': existentes}
 
 
 def _estado_por_monto(cobro: Cobro) -> str:

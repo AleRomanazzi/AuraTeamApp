@@ -144,7 +144,7 @@ def generar_tareas_de_servicios(hoy) -> int:
                     creadas += 1
                     notificar(
                         usuarios_de([s.pagador_id]), 'servicio', f'Pagar {s.nombre} antes del {fecha}', f'Total: {pesos(s.monto_total)}.',
-                        f'/tareas?tarea={tarea.pk}', tarea=tarea, email=True,
+                        f'/tareas?tarea={tarea.pk}', tarea=tarea,
                     )
             for persona_id, monto in aportes:
                 destino = f' a {s.pagador.nombre}' if s.pagador_id else ''
@@ -157,7 +157,7 @@ def generar_tareas_de_servicios(hoy) -> int:
                     creadas += 1
                     notificar(
                         usuarios_de([persona_id]), 'aporte', f'Aportá tu parte de {s.nombre}', f'{pesos(monto)}{destino}, antes del {fecha}.',
-                        f'/tareas?tarea={tarea.pk}', tarea=tarea, email=True,
+                        f'/tareas?tarea={tarea.pk}', tarea=tarea,
                     )
     return creadas
 
@@ -216,3 +216,131 @@ def al_completar_tarea(tarea, actor=None):
             destinatarios, 'aporte', f'{aviso.persona.nombre} transfirió su parte de {s.nombre}', f'{pesos(aviso.monto)} · {aviso.periodo}.',
             f'/tareas?tarea={tarea.pk}', excluir=actor,
         )
+
+
+# --- Recordatorios por mail ------------------------------------------------------------------------------------------
+
+# Etapas: `dias_aviso` días antes, el día del vencimiento y DIAS_DESPUES después si sigue sin pagar o sin transferir.
+DIAS_DESPUES = 2
+# Si el cron no corrió el día justo, una etapa se manda igual hasta este margen.
+MARGEN_DIAS = 2
+
+
+def etapa_de_hoy(vencimiento, dias_aviso, hoy) -> str | None:
+    """La etapa del recordatorio que toca hoy ('antes', 'dia', '+2') o None."""
+    etapas = [('antes', vencimiento - timedelta(days=dias_aviso))] if dias_aviso else []
+    etapas += [('dia', vencimiento), (f'+{DIAS_DESPUES}', vencimiento + timedelta(days=DIAS_DESPUES))]
+    debidas = [(clave, fecha) for clave, fecha in etapas if fecha <= hoy]
+    if not debidas or hoy >= debidas[-1][1] + timedelta(days=MARGEN_DIAS):
+        return None
+    return debidas[-1][0]
+
+
+def _cuando(vencimiento, hoy) -> str:
+    fecha = vencimiento.strftime('%d/%m')
+    if vencimiento == hoy:
+        return f'vence hoy ({fecha})'
+    if vencimiento < hoy:
+        return f'venció el {fecha}'
+    return f'vence el {fecha}'
+
+
+def _pendientes_por_usuario(hoy) -> dict:
+    """{usuario: [(clave, titulo, linea, url)]} de lo que hay que recordar hoy."""
+    from apps.notificaciones.services import admins, usuarios_de
+
+    salida = {}
+
+    def sumar(usuarios, item):
+        for u in usuarios:
+            salida.setdefault(u, []).append(item)
+
+    abiertos = AvisoServicio.objects.filter(tarea__isnull=False).exclude(tarea__estado='hecha')
+    abiertos = abiertos.filter(vencimiento__gte=hoy - timedelta(days=DIAS_DESPUES + MARGEN_DIAS))
+    for a in abiertos.select_related('servicio', 'servicio__pagador', 'persona'):
+        etapa = etapa_de_hoy(a.vencimiento, a.servicio.dias_aviso, hoy)
+        if etapa is None:
+            continue
+        s = a.servicio
+        if a.tipo == 'pago':
+            titulo = f'Pagar {s.nombre}'
+            linea = f'Pagar {s.nombre}: {pesos(a.monto)}, {_cuando(a.vencimiento, hoy)}.'
+        else:
+            destino = f' a {s.pagador.nombre}' if s.pagador_id else ''
+            alias = f' Alias/CBU: {s.pagador.alias_cbu}.' if s.pagador_id and s.pagador.alias_cbu else ''
+            titulo = f'Transferir tu parte de {s.nombre}'
+            linea = f'Transferir {pesos(a.monto)}{destino} por {s.nombre}, {_cuando(a.vencimiento, hoy)}.{alias}'
+        sumar(usuarios_de([a.persona_id]), (f'rec-servicio:{a.id}:{etapa}', titulo, linea, f'/tareas?tarea={a.tarea_id}'))
+
+    # Las que paga la agencia: a los admins.
+    pagados = set(PagoServicio.objects.values_list('servicio_id', 'periodo'))
+    for s in Servicio.objects.filter(activo=True, pagador__isnull=True):
+        for vencimiento, periodo in _vencimientos(s, hoy - timedelta(days=DIAS_DESPUES + MARGEN_DIAS)):
+            etapa = etapa_de_hoy(vencimiento, s.dias_aviso, hoy)
+            # Sin egreso registrado no se puede saber si se pagó: no se insiste después del vencimiento.
+            if etapa is None or (s.id, periodo) in pagados or (etapa.startswith('+') and not s.generar_egreso):
+                continue
+            linea = f'{s.nombre}: {pesos(s.monto_total)}, {_cuando(vencimiento, hoy)}. Lo paga la agencia.'
+            sumar(admins(), (f'rec-agencia:{s.id}:{periodo}:{etapa}', f'Pagar {s.nombre}', linea, '/suscripciones'))
+    return salida
+
+
+def recordatorios_de_servicios(hoy) -> int:
+    """Un mail por persona y día con sus pagos y aportes de suscripciones (antes, el día y +2 si sigue pendiente).
+
+    Cada ítem queda en la campana una sola vez por etapa (dedupe por clave). Devuelve cuántos mails salieron.
+    """
+    from apps.notificaciones import email as correo
+    from apps.notificaciones.models import Notificacion
+    from apps.notificaciones.services import notificar
+
+    enviados = 0
+    for usuario, items in _pendientes_por_usuario(hoy).items():
+        nuevos = [it for it in items if notificar([usuario], 'servicio', it[1], it[2], it[3], clave=it[0])]
+        if not nuevos or not (usuario.notif_email and usuario.email):
+            continue
+        asunto = nuevos[0][1] if len(nuevos) == 1 else f'{len(nuevos)} pagos de suscripciones pendientes'
+        bloques = [correo.parrafo('Te recordamos lo que tenés pendiente de suscripciones:'), correo.lista([it[2] for it in nuevos])]
+        boton = ('Abrir en el panel', nuevos[0][3] if len(nuevos) == 1 else '/tareas')
+        html = correo.plantilla(asunto, bloques, boton)
+        if correo.enviar_seguro(usuario.email, f'{asunto} · AuraTeam', html):
+            enviados += 1
+            Notificacion.objects.filter(usuario=usuario, clave__in=[it[0] for it in nuevos]).update(email_enviado=True)
+    return enviados
+
+
+def suscripciones_de(persona, hoy) -> list[dict]:
+    """Lo que paga o aporta una persona, con el próximo vencimiento y si ya cumplió (para Mi panel)."""
+    hechas = AvisoServicio.objects.filter(persona=persona, tarea__estado='hecha')
+    # Sin egreso registrado (generar_egreso apagado) alcanza con la tarea de pago hecha.
+    pagados = set(PagoServicio.objects.filter(servicio__pagador=persona).values_list('servicio_id', 'periodo'))
+    pagados |= set(hechas.filter(tipo='pago').values_list('servicio_id', 'periodo'))
+    aportes_hechos = set(hechas.filter(tipo='aporte').values_list('servicio_id', 'periodo'))
+    salida = []
+    for s in Servicio.objects.filter(activo=True).select_related('pagador'):
+        if s.pagador_id == persona.pk:
+            rol, monto, hechos = 'pagas', s.monto_total, pagados
+        else:
+            monto = next((m for pid, m in _aportes(s) if pid == persona.pk), None)
+            if monto is None:
+                continue
+            rol, hechos = 'aportas', aportes_hechos
+        # El vencimiento pendiente más viejo de los últimos días o, si está todo al día, el próximo.
+        candidatos = _vencimientos(s, hoy - timedelta(days=DIAS_TARDE))
+        pendiente = next(((f, p) for f, p in candidatos if (s.id, p) not in hechos and f >= hoy - timedelta(days=DIAS_TARDE)), None)
+        proximo = pendiente or next(((f, p) for f, p in _vencimientos(s, hoy) if f >= hoy and (s.id, p) not in hechos), None)
+        aviso = None
+        if proximo:
+            aviso = AvisoServicio.objects.filter(servicio=s, periodo=proximo[1], persona=persona).values_list('tarea_id', flat=True).first()
+        salida.append({
+            'id': s.id,
+            'nombre': s.nombre,
+            'rol': rol,
+            'monto': str(money(monto)),
+            'pagador': s.pagador.nombre if s.pagador_id and rol == 'aportas' else None,
+            'vencimiento': proximo[0].isoformat() if proximo else None,
+            'periodo': proximo[1] if proximo else None,
+            'al_dia': pendiente is None,
+            'tarea': aviso,
+        })
+    return sorted(salida, key=lambda x: x['vencimiento'] or '9999')

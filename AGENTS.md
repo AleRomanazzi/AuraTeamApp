@@ -67,10 +67,17 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
     fecha y horario en el panel (`aplicar_movimiento_tarea`), salvo que el panel tenga cambios sin subir.
     «Equipo hoy» (`seguimiento.py`, `GET /api/equipo/seguimiento/`, solo admins): vencidas, de hoy, próximas,
     en revisión y % de cumplimiento en fecha (7 y 30 días) por persona.
-  - `finanzas`: transacciones (ingresos/egresos) y categorías. `stats`: reportes.
+  - `finanzas`: transacciones (ingresos/egresos) y categorías. Flujo de caja proyectado (`proyeccion.py`,
+    `GET /api/finanzas/proyeccion/?meses=`, solo admins, card en el Dashboard): cobros, contratos sin cobro generado,
+    deuda atrasada, suscripciones y pagos al equipo; lo que falta se estima con el promedio de los 3 meses anteriores.
+    Pagos al equipo: al pagar una liquidación la persona recibe mail con el detalle y link al recibo; las que llevan
+    7 días sin pagar avisan a los admins, y el resumen diario las lista. `stats`: reportes.
   - `servicios`: suscripciones. Con `pagador` (Persona) y filas del reparto vinculadas a personas, `services.py`
     genera `dias_aviso` días antes la tarea «Pagar …» y las «Transferir …» (`AvisoServicio`, etiqueta `pagos`).
     Completar la de pago registra el egreso del período. Llevan montos: no van a Notion y el equipo solo ve las suyas.
+    Recordatorios por mail (`recordatorios_de_servicios`, cron desde las 8 h): etapas antes (`dias_aviso`), el día y +2
+    mientras siga pendiente; un solo mail por persona y día, y las que paga la agencia van a los admins. Crear la tarea
+    avisa solo por la campana. «Mis suscripciones» en Mi panel (`suscripciones_de`).
   - `notificaciones`: campana (`Notificacion`, dedupe por `clave`) y emails. `services.notificar` y los disparos
     (`al_asignar`, `al_cambiar_estado`, `asignadas_en_tanda`); las tareas privadas nunca avisan a no admins.
     `User.notif_email` apaga los emails personales.

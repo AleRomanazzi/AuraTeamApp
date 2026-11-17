@@ -38,7 +38,7 @@ NOTION_CLIENTES_DS = os.getenv("NOTION_CLIENTES_DS", "4f207fc3-c612-4a54-959b-77
 
 DEBUG = env_bool("DEBUG", False)
 TESTING = "pytest" in sys.modules
-# Render define RENDER=true en todos sus servicios.
+# Render define RENDER=true en todos sus servicios; en el VPS (Coolify) se define DJANGO_ENV=production.
 IS_PRODUCTION = env_bool("RENDER", False) or os.getenv("DJANGO_ENV", "").lower() == "production"
 # Emails (Gmail de la agencia): fuera de producción solo se registran en el log, salvo EMAILS_SOLO_LOG=0.
 EMAILS_SOLO_LOG = env_bool("EMAILS_SOLO_LOG", not IS_PRODUCTION)
@@ -53,7 +53,7 @@ if not SECRET_KEY:
 elif IS_PRODUCTION and len(SECRET_KEY) < 40:
     import warnings
 
-    warnings.warn("SECRET_KEY tiene menos de 40 caracteres; generá una más larga en Render.", stacklevel=1)
+    warnings.warn("SECRET_KEY tiene menos de 40 caracteres; generá una más larga.", stacklevel=1)
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 RENDER_HOST = os.getenv("RENDER_EXTERNAL_HOSTNAME")
@@ -122,7 +122,8 @@ if os.getenv("DATABASE_URL"):
             os.getenv("DATABASE_URL", ""),
             conn_max_age=600,
             conn_health_checks=True,
-            ssl_require=True,
+            # Neon exige SSL; el Postgres del VPS va por la red interna de Docker sin SSL (DB_SSL_REQUIRE=0).
+            ssl_require=env_bool("DB_SSL_REQUIRE", True),
         )
     }
 else:
@@ -218,8 +219,14 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": True,
 }
 
+# En producción la caché va en la base para que los workers de gunicorn compartan locks y límites de intentos
+# (la tabla la crea `createcachetable` en el deploy).
 CACHES = {
-    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "aurateam"},
+    "default": (
+        {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "django_cache"}
+        if IS_PRODUCTION and not TESTING
+        else {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "aurateam"}
+    ),
 }
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 11 * 1024 * 1024

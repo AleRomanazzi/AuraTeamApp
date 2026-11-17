@@ -42,7 +42,7 @@ TESTING = "pytest" in sys.modules
 IS_PRODUCTION = env_bool("RENDER", False) or os.getenv("DJANGO_ENV", "").lower() == "production"
 # Emails (Gmail de la agencia): fuera de producción solo se registran en el log, salvo EMAILS_SOLO_LOG=0.
 EMAILS_SOLO_LOG = env_bool("EMAILS_SOLO_LOG", not IS_PRODUCTION)
-# Token que manda el cron externo (GitHub Actions) a /api/cron/.
+# Token para disparar el cron a mano con POST /api/cron/.
 CRON_TOKEN = os.getenv("CRON_TOKEN", "").strip()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "").strip()

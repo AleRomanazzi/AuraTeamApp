@@ -1,4 +1,4 @@
-"""Tareas programadas. Las dispara cada hora un cron externo (GitHub Actions) con POST /api/cron/.
+"""Tareas programadas. Las dispara cada hora la tarea programada de Coolify (`manage.py cron`) o POST /api/cron/.
 
 Todo es idempotente: correr dos veces en la misma hora no duplica avisos ni tareas. Cada paso va aparte para que el
 fallo de uno no frene a los demás.

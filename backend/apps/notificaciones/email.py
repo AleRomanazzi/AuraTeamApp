@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
 TIMEOUT = 20
-PANEL_URL = 'https://aurateamapp.netlify.app'
+PANEL_URL = 'https://aurateam.cloud'
 
 
 class EmailError(Exception):

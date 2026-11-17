@@ -14,15 +14,20 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
 
 ## Producción
 
-- Panel: https://aurateamapp.netlify.app (Netlify, build de `frontend/`, ver `netlify.toml`).
-- API: https://aura-backend-rj63.onrender.com (Render, plan free, disco efímero; ver `render.yaml`). Salud: `/api/health/`.
-  El deploy corre `backend/build.sh` (collectstatic + migrate) en cada push a `main`.
-- Base: Neon Postgres, proyecto `empty-grass-50367051`, rama de producción `br-delicate-voice-ac1f536q`.
+- VPS propio (Hostinger KVM 4, São Paulo, Ubuntu 24.04, `ssh aura-vps`) con **Coolify**
+  (https://coolify.aurateam.cloud). Se comparte con otros sistemas. Firewall en el panel de Hostinger (solo 22/80/443).
+- Panel: https://aurateam.cloud (app `aura-frontend`: `frontend/Dockerfile`, Nginx; `VITE_API_URL` es variable de build).
+- API: https://api.aurateam.cloud (app `aura-backend`: `backend/Dockerfile`; al arrancar corre migrate +
+  createcachetable, ver `docker-entrypoint.sh`). Salud: `/api/health/`. Adjuntos en el volumen persistente `/app/media`.
+  Las dos apps se despliegan solas en cada push a `main`. Variables de entorno en Coolify (`DJANGO_ENV=production`).
+- Antes: Netlify (`aurateamapp.netlify.app`, hoy redirige a aurateam.cloud por `netlify.toml`) y Render (suspendido).
+- Base: Neon Postgres (`sa-east-1`), proyecto `empty-grass-50367051`, rama de producción `br-delicate-voice-ac1f536q`.
 - **`backend/.env` apunta a la base de PRODUCCIÓN.** Para trabajar local anteponé `DATABASE_URL=` a los comandos de
   Django (usa SQLite). Cualquier comando que modifique producción requiere confirmación explícita del usuario.
 - Nunca imprimas ni commitees secretos (`backend/.env`, `client_secret_*.json`).
-- Cron: GitHub Actions (`.github/workflows/cron.yml`) llama cada hora a `POST /api/cron/` con `X-Cron-Token`
-  (`CRON_TOKEN` en Render y como secret del repo). `core/cron.py`: recurrentes, tareas de servicios, avisos de deadlines
+- Cron: tarea programada de Coolify en `aura-backend` que corre `python manage.py cron` a los 5 min de cada hora
+  (lo mismo que `POST /api/cron/` con `X-Cron-Token`; `.github/workflows/cron.yml` queda solo para correrlo a mano).
+  `core/cron.py`: recurrentes, tareas de servicios, avisos de deadlines
   (desde las 8 h), resumen diario por email (una vez por día), emails a clientes (desde las 9 h) y limpieza. Si el cron
   no corrió en 2 h, al abrir Tareas o Mi panel se hacen los pasos livianos (`cron.respaldo`).
 - Emails: salen del Gmail de la agencia (`notificaciones/email.py`). Fuera de producción solo se registran en el log

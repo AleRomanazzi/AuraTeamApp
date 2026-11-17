@@ -1,12 +1,11 @@
+# El panel se mudó al VPS (https://aurateam.cloud): Netlify solo redirige la dirección vieja, conservando la ruta.
 [build]
   base    = "frontend"
-  command = "npm run build"
-  publish = "dist"
-
-[build.environment]
-  NODE_VERSION = "20"
+  publish = "redireccion"
+  command = "mkdir -p redireccion"
 
 [[redirects]]
   from   = "/*"
-  to     = "/index.html"
-  status = 200
+  to     = "https://aurateam.cloud/:splat"
+  status = 301
+  force  = true

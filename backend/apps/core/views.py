@@ -22,7 +22,7 @@ class HealthView(APIView):
 
 
 class CronView(APIView):
-    """Lo llama cada hora el cron externo (GitHub Actions) con el header X-Cron-Token."""
+    """Corre el cron con el header X-Cron-Token (el horario va por `manage.py cron` en el VPS; esto queda para dispararlo a mano)."""
 
     authentication_classes = []
     permission_classes = [permissions.AllowAny]

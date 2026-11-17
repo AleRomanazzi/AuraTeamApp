@@ -26,7 +26,6 @@ urlpatterns = [
     path('api/cron/', CronView.as_view(), name='cron'),
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.accounts.urls')),
-    path('api/notion/', include('apps.integraciones.urls')),
     path('api/', include('apps.api.urls')),
 ]
 if settings.DEBUG:

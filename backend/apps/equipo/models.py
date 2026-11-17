@@ -39,7 +39,6 @@ class Persona(models.Model):
     cuit = models.CharField(max_length=20, blank=True)
     alias_cbu = models.CharField(max_length=60, blank=True)
     activo = models.BooleanField(default=True)
-    notion_user_id = models.CharField(max_length=36, blank=True)
 
     class Meta:
         ordering = ['nombre']
@@ -68,17 +67,12 @@ class Tarea(models.Model):
     links = models.JSONField(default=list, blank=True)
     completada_en = models.DateTimeField(null=True, blank=True)
     creado = models.DateTimeField(auto_now_add=True, null=True)
-    notion_page_id = models.CharField(max_length=36, null=True, blank=True, unique=True)
-    # Huella de los campos sincronizados la última vez que panel y Notion coincidieron: evita reaplicar ecos propios.
-    notion_huella = models.CharField(max_length=64, blank=True)
-    # La página está en la base privada de Notion (etiquetas solo para admins) y no en «Tareas».
-    notion_privada = models.BooleanField(default=False)
     etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     recurrente = models.ForeignKey('TareaRecurrente', null=True, blank=True, on_delete=models.SET_NULL, related_name='tareas')
     paso_onboarding = models.ForeignKey('clientes.PasoOnboarding', null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     onboarding = models.BooleanField(default=False)
     # Evento de día completo en el calendario de Google de su etiqueta. Vacío con google_event_id cargado = Historias
-    # (antes Operaciones). Si la etiqueta es privada, la página de Notion va a la base de tareas privadas.
+    # (antes Operaciones).
     google_event_id = models.CharField(max_length=255, blank=True)
     google_calendar_id = models.CharField(max_length=255, blank=True)
     google_huella = models.CharField(max_length=64, blank=True)
@@ -97,7 +91,6 @@ class Subtarea(models.Model):
     titulo = models.CharField(max_length=200)
     hecha = models.BooleanField(default=False)
     orden = models.PositiveSmallIntegerField(default=0)
-    notion_block_id = models.CharField(max_length=36, blank=True)
 
     class Meta:
         ordering = ['orden', 'id']
@@ -123,7 +116,7 @@ class TareaRecurrente(models.Model):
     titulo_subtarea = models.CharField(max_length=80, blank=True)
     etiqueta = models.CharField(max_length=LARGO_ETIQUETA, default='historias')
     prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
-    # Opcional: las tareas generadas llevan este horario (y van con hora a Google y Notion).
+    # Opcional: las tareas generadas llevan este horario (y van con hora a Google).
     hora_inicio = models.TimeField(null=True, blank=True)
     hora_fin = models.TimeField(null=True, blank=True)
     activa = models.BooleanField(default=True)

@@ -1,4 +1,3 @@
-import uuid
 from datetime import date
 
 import pytest
@@ -12,7 +11,6 @@ from apps.equipo.models import Subtarea, Tarea, TareaRecurrente
 
 
 def _silenciar_sync(monkeypatch):
-    monkeypatch.setattr('apps.equipo.views.notion.al_guardar_tarea', lambda *a, **k: None)
     monkeypatch.setattr('apps.equipo.views.google_calendar.al_guardar_tarea', lambda *a, **k: None)
 
 
@@ -105,7 +103,7 @@ def _dia(plantilla, fecha, estados):
     for i, estado in enumerate(estados, start=1):
         tarea = Tarea.objects.create(
             titulo=f'{plantilla.titulo} {i}/3', estado=estado, fecha_limite=fecha, recurrente=plantilla,
-            cliente=plantilla.cliente, notion_page_id=str(uuid.uuid4()), google_event_id=f'g-{plantilla.pk}-{fecha}-{i}',
+            cliente=plantilla.cliente, google_event_id=f'g-{plantilla.pk}-{fecha}-{i}',
         )
         if estado == 'hecha':
             tarea.completada_en = timezone.now()
@@ -117,10 +115,8 @@ def _dia(plantilla, fecha, estados):
 @pytest.mark.django_db
 def test_fusion_en_seco_no_escribe_y_aplicar_fusiona_solo_lo_abierto(monkeypatch):
     avisos, guardadas, borradas = [], [], []
-    monkeypatch.setattr('apps.equipo.fusion.notion.al_guardar_tarea', lambda t: guardadas.append(t.pk))
-    monkeypatch.setattr('apps.equipo.fusion.notion.al_borrar_tarea', lambda pid: borradas.append(pid))
-    monkeypatch.setattr('apps.equipo.fusion.google_calendar.al_guardar_tarea', lambda *a, **k: None)
-    monkeypatch.setattr('apps.equipo.fusion.google_calendar.al_borrar_tarea', lambda *a, **k: None)
+    monkeypatch.setattr('apps.equipo.fusion.google_calendar.al_guardar_tarea', lambda t: guardadas.append(t.pk))
+    monkeypatch.setattr('apps.equipo.fusion.google_calendar.al_borrar_tarea', lambda gid, cal_id: borradas.append(gid))
     monkeypatch.setattr('apps.notificaciones.services.al_cambiar_estado', lambda *a, **k: avisos.append('estado'))
     monkeypatch.setattr('apps.notificaciones.services.al_asignar', lambda *a, **k: avisos.append('asigna'))
 
@@ -160,8 +156,8 @@ def test_fusion_en_seco_no_escribe_y_aplicar_fusiona_solo_lo_abierto(monkeypatch
     assert de_lennon_queda.estado == 'pendiente' and de_lennon_queda.subtareas.filter(hecha=True).count() == 0
     assert Tarea.objects.filter(recurrente=posteos, fecha_limite=abierto).count() == 2
     assert set(borradas) == {
-        abiertas[1].notion_page_id, abiertas[2].notion_page_id,
-        de_lennon[1].notion_page_id, de_lennon[2].notion_page_id,
+        abiertas[1].google_event_id, abiertas[2].google_event_id,
+        de_lennon[1].google_event_id, de_lennon[2].google_event_id,
     }
     assert set(guardadas) == {queda.pk, de_lennon_queda.pk}
     assert not Subtarea.objects.filter(tarea__in=hechas).exists()

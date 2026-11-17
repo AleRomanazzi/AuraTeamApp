@@ -122,10 +122,6 @@ class GoogleCalendarEtiquetaView(APIView):
                 return Response({'detail': 'Esa etiqueta es siempre solo para los socios.'}, status=status.HTTP_400_BAD_REQUEST)
             if not CalendarioGoogle.objects.filter(etiqueta=etiqueta).update(**cambios):
                 return Response({'detail': 'Primero elegí el calendario de esa etiqueta.'}, status=status.HTTP_400_BAD_REQUEST)
-            if cambios.get('privada') is not None:
-                from apps.integraciones import notion
-
-                notion.al_cambiar_privacidad(etiqueta)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

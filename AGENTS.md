@@ -2,15 +2,11 @@
 
 Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Respondé siempre en **español**.
 
-## Coordinación Claude ↔ Cursor
+## Fuente de verdad
 
-- El workspace de Notion de AuraTeam lo trabaja Claude; el código del panel, Cursor. La página de Notion
-  **Dirección → 🤝 Coordinación Claude ↔ Cursor** (https://app.notion.com/p/3eb3a68b2dd8813988b4cac0a541816d)
-  tiene las fuentes de verdad, los mapeos Notion ↔ panel, las preguntas abiertas y una bitácora.
-- Leela antes de tocar algo que afecte a Notion (sincronización, clientes, tareas, contratos) y dejá una entrada en
-  la bitácora al terminar.
-- **El dinero vive solo en el panel** (NeonDB): cobros, pagos al equipo, movimientos, suscripciones. Notion no es
-  fuente de verdad de montos.
+- **El panel es la única fuente de verdad** (base en Neon): clientes, tareas, finanzas, equipo, todo. Desde noviembre
+  de 2026 ya no hay integración con Notion (las bases viejas quedaron como archivo, sin sincronizar). Las únicas
+  integraciones externas son Google (Calendar, Gmail y Drive de la cuenta de la agencia).
 
 ## Producción
 
@@ -31,7 +27,7 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
   (desde las 8 h), resumen diario por email (una vez por día), emails a clientes (desde las 9 h) y limpieza. Si el cron
   no corrió en 2 h, al abrir Tareas o Mi panel se hacen los pasos livianos (`cron.respaldo`).
 - Emails: salen del Gmail de la agencia (`notificaciones/email.py`). Fuera de producción solo se registran en el log
-  (`EMAILS_SOLO_LOG`). Prueba local: `DATABASE_URL= GOOGLE_CALENDAR_SOLO_LECTURA=1 NOTION_TOKEN= EMAILS_SOLO_LOG=1`.
+  (`EMAILS_SOLO_LOG`). Prueba local: `DATABASE_URL= GOOGLE_CALENDAR_SOLO_LECTURA=1 EMAILS_SOLO_LOG=1`.
 
 ## Stack
 
@@ -56,21 +52,18 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
     equipo son **manuales** (`services.repartir_cobro`); las asignaciones fijas son solo referencia.
     `TareaRecurrente`: plantillas (p. ej. historias diarias) que `services.generar_recurrentes` convierte en tareas
     hasta fin del mes en curso (desde su última semana, también el siguiente) al listar tareas o abrir Mi panel;
-    Notion y Google las reciben de a tandas en las sincronizaciones incrementales.
+    Google las recibe de a tandas en las sincronizaciones incrementales.
  «Plan del mes» (`POST /api/tareas/plan/`, admins y CM en sus clientes asignados): crea varias tareas de un cliente
  de una vez; la copia del mes anterior (mismo día de la semana) se arma en el frontend (`PlanMesModal.jsx`).
- La sincronización incremental de Notion sube de a tandas cualquier tarea sin página, no solo las recurrentes.
     Dependencias (`Tarea.depende_de`, `services.ajustar_por_dependencias`, `dependencias.propagar`): mientras espere a
-    tareas no Hechas queda `bloqueada` con `bloqueo_auto` y no puede avanzar (400 en el panel; desde Notion vuelve a
-    Bloqueada). Si alguien la deja Bloqueada mientras espera, cuenta como bloqueo automático. Cuando la última pasa a Hecha (o se
+    tareas no Hechas queda `bloqueada` con `bloqueo_auto` y no puede avanzar (400 en el panel). Si alguien la deja Bloqueada mientras espera, cuenta como bloqueo automático. Cuando la última pasa a Hecha (o se
     borra) vuelve a Por hacer y avisa por mail a sus responsables. Al pasar a Hecha (o al vincular una ya Hecha), sus
     `links` se suman a los de la que depende (`heredar_links`, sin repetir URLs).
-    Sin ciclos. En Notion van como la relación «Bloqueada por» (dual con «Bloquea», en las dos bases); las que Notion no
-    puede mostrar (previa sin página o de la otra base) se conservan en el panel. Los pasos de onboarding
+    Sin ciclos. Los pasos de onboarding
     (`PasoOnboarding.despues_de`) y las filas del Plan del mes (`despues_de`: índice de una fila anterior) se encadenan.
     Horario opcional: `fecha_inicio` (rango hasta `fecha_limite`, que sigue siendo el vencimiento), `hora_inicio` y
-    `hora_fin` (también en `TareaRecurrente`); van en la propiedad «Fecha» de Notion y como evento con hora en Google.
-    Solo entran en la huella de Notion cuando están cargados. Mover o estirar en Google el evento de una tarea le cambia
+    `hora_fin` (también en `TareaRecurrente`); van como evento con hora en Google.
+    Mover o estirar en Google el evento de una tarea le cambia
     fecha y horario en el panel (`aplicar_movimiento_tarea`), salvo que el panel tenga cambios sin subir.
     «Equipo hoy» (`seguimiento.py`, `GET /api/equipo/seguimiento/`, solo admins): vencidas, de hoy, próximas,
     en revisión y % de cumplimiento en fecha (7 y 30 días) por persona.
@@ -81,23 +74,14 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
     7 días sin pagar avisan a los admins, y el resumen diario las lista. `stats`: reportes.
   - `servicios`: suscripciones. Con `pagador` (Persona) y filas del reparto vinculadas a personas, `services.py`
     genera `dias_aviso` días antes la tarea «Pagar …» y las «Transferir …» (`AvisoServicio`, etiqueta `pagos`).
-    Completar la de pago registra el egreso del período. Llevan montos: no van a Notion y el equipo solo ve las suyas.
+    Completar la de pago registra el egreso del período. Llevan montos: el equipo solo ve las suyas.
     Recordatorios por mail (`recordatorios_de_servicios`, cron desde las 8 h): etapas antes (`dias_aviso`), el día y +2
     mientras siga pendiente; un solo mail por persona y día, y las que paga la agencia van a los admins. Crear la tarea
     avisa solo por la campana. «Mis suscripciones» en Mi panel (`suscripciones_de`).
   - `notificaciones`: campana (`Notificacion`, dedupe por `clave`) y emails. `services.notificar` y los disparos
     (`al_asignar`, `al_cambiar_estado`, `asignadas_en_tanda`); las tareas privadas nunca avisan a no admins.
     `User.notif_email` apaga los emails personales.
-  - `integraciones`: sincronización de Tareas con Notion en los dos sentidos (`notion.py`). Panel → Notion al guardar
-    desde la API; Notion → panel por webhook (`/api/notion/webhook/`), incremental al abrir Tareas y completa manual.
-    Para no pasar el tope de bloques del plan de Notion, ahí solo están las recurrentes hasta el domingo de la semana
-    (desde el sábado, también la siguiente; `fin_de_ventana`) y las Hechas de los últimos 7 días: el resto lo saca
-    `sacar_de_notion` (cron y sincronización incremental), que corta el vínculo antes de mandar la página a la
-    papelera, así la tarea sigue en el panel. Nunca borrar tareas a mano en Notion: la papelera borra la tarea del panel.
-    Nombres de propiedades/opciones de Notion como constantes al inicio de `notion.py`: si Claude los cambia en Notion,
-    hay que actualizarlos ahí. Un fallo de Notion nunca debe impedir guardar en el panel. Las tareas con etiqueta
-    privada van a otra base, «Tareas · CEOs» (`NOTION_TAREAS_PRIVADAS_DS`, mismas propiedades), compartida solo con
-    los socios; al cambiar de etiqueta la página se muda de base (`Tarea.notion_privada`).
+  - `integraciones`: solo Google Drive (`drive.py`, carpetas de clientes; ver `clientes`).
   - `calendario`: eventos del panel y Google Calendar (`google_calendar.py`). Cada etiqueta es un calendario de la
     cuenta de la agencia (`CalendarioGoogle`): las 6 base (CEOs, Coberturas, Historias, Posteos, Edición, Reuniones &
     Briefing) más los calendarios nuevos, que se detectan solos al sincronizar. Lista y reglas en `etiquetas.py`:

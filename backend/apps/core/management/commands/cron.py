@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = 'Recurrentes, tareas de servicios, avisos, resumen diario, emails a clientes, Notion y limpieza.'
+    help = 'Recurrentes, tareas de servicios, avisos, resumen diario, emails a clientes y limpieza.'
 
     def handle(self, *args, **options):
         from apps.core.cron import ejecutar

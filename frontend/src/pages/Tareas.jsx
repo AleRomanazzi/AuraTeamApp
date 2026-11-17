@@ -11,7 +11,7 @@ import TableroTareas from '../components/tareas/TableroTareas'
 import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
-import { seguirSincronizando, useSyncCalendario } from '../features/google/useSyncCalendario'
+import { useSyncCalendario } from '../features/google/useSyncCalendario'
 import { puede, useClientes, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { GESTION_INTERNA } from '../lib/constants'
@@ -59,18 +59,6 @@ export default function Tareas() {
   const mios = useQuery({ queryKey: ['clientes', 'mios'], queryFn: () => getList('clientes/', { mios: 1 }), enabled: Boolean(me) && !esAdmin })
   const rango = { desde: proximas[0], hasta: `${proximas[27]}T23:59:59` }
   const eventos = useQuery({ queryKey: QK.calEventos(rango), queryFn: () => getList('cal-eventos/', rango) })
-  // Respaldo del webhook: trae lo editado en Notion al abrir la pantalla (el servidor lo limita a una vez por minuto).
-  useQuery({
-    queryKey: ['notion', 'incremental'],
-    queryFn: async () => {
-      const { data } = await api.post('notion/sincronizar/')
-      if (data.creadas || data.actualizadas || data.borradas) invalidar(qc, ['tareas', 'dashboard', 'mi-panel'])
-      return data
-    },
-    staleTime: 60_000,
-    refetchInterval: seguirSincronizando,
-    retry: false,
-  })
   useSyncCalendario()
 
   // ?tarea=ID (links de notificaciones) abre esa tarea.

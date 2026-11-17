@@ -162,11 +162,6 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
       onSubmit={editable ? () => guardar.mutate() : undefined}
       footer={
         <>
-          {tarea?.notion_url ? (
-            <a className="btn btn-secondary btn-sm modal-footer-start" href={tarea.notion_url} target="_blank" rel="noreferrer">
-              Abrir en Notion ↗
-            </a>
-          ) : null}
           {!nueva && esAdmin ? (
             <button
               type="button"
@@ -202,7 +197,6 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               ))}
           </select>
           {tarea?.recurrente ? <span className="tarea-sheet-sync">↻ Recurrente</span> : null}
-          {tarea?.notion_url ? <span className="tarea-sheet-sync">Sincronizada con Notion</span> : null}
         </div>
         <input className="tarea-sheet-titulo" value={f.titulo} onChange={set('titulo')} required maxLength={200} placeholder="Título de la tarea" aria-label="Título" />
 

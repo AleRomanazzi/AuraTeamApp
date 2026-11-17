@@ -13,7 +13,6 @@ from apps.core.csv_utils import csv_response, monto_es
 from apps.core.permissions import IsAdmin, IsAdminOrReadOnly, es_admin, persona_de, tiene_permiso
 from apps.core.utils import money, parse_mes, today
 from apps.calendario import etiquetas, google_calendar
-from apps.integraciones import notion
 from apps.notificaciones import services as avisos
 from apps.servicios.services import al_completar_tarea as servicios_al_completar
 
@@ -53,12 +52,6 @@ class PersonaViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-
-    def perform_update(self, serializer):
-        antes = serializer.instance.notion_user_id
-        persona = serializer.save()
-        if persona.notion_user_id != antes:
-            notion.al_vincular_persona(persona)
 
     def destroy(self, request, *args, **kwargs):
         persona = self.get_object()
@@ -123,7 +116,6 @@ class TareaViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def _efectos(self, tarea, estado_anterior, user, antes_asignados=None):
-        notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
         if antes_asignados is not None:
             nuevas = set(tarea.asignaciones.values_list('persona_id', flat=True)) - antes_asignados
@@ -143,7 +135,6 @@ class TareaViewSet(viewsets.ModelViewSet):
         persona = persona_de(user)
         if not es_admin(user) and persona is not None and not tarea.asignaciones.exists():
             AsignacionTarea.objects.create(persona=persona, tarea=tarea)
-        notion.al_guardar_tarea(tarea)
         google_calendar.al_guardar_tarea(tarea)
         avisos.al_asignar(tarea, list(tarea.asignaciones.values_list('persona_id', flat=True)), user)
         if tarea.estado == 'hecha':
@@ -191,7 +182,7 @@ class TareaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def plan(self, request):
-        """Crea varias tareas de un cliente (o de gestión interna) de una vez. Llegan a Notion y a Google de a tandas."""
+        """Crea varias tareas de un cliente (o de gestión interna) de una vez. Llegan a Google de a tandas."""
         serializer = PlanDelMesSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user, cliente = request.user, serializer.validated_data.get('cliente')
@@ -207,16 +198,14 @@ class TareaViewSet(viewsets.ModelViewSet):
         return Response({'creadas': len(creadas)}, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance):
-        page_id, gid, cal_id = instance.notion_page_id, instance.google_event_id, instance.google_calendar_id
+        gid, cal_id = instance.google_event_id, instance.google_calendar_id
         esperaban = list(instance.desbloquea.all())
         instance.delete()
-        notion.al_borrar_tarea(page_id)
         google_calendar.al_borrar_tarea(gid, cal_id)
         for dep in esperaban:
             # Sin esa dependencia puede quedar libre.
             if services.ajustar_por_dependencias(dep) == 'desbloqueada':
                 avisos.tarea_disponible(dep, instance, self.request.user, borrada=True)
-                notion.al_guardar_tarea(dep)
                 google_calendar.al_guardar_tarea(dep)
 
 

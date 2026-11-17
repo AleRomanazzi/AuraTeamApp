@@ -537,9 +537,6 @@ def aplicar_movimiento_tarea(item: dict, tarea_id) -> bool:
         setattr(t, k, nuevo[k])
     t.google_huella = _huella_tarea(t)
     t.save(update_fields=[*cambios, 'google_huella'])
-    from apps.integraciones import notion
-
-    notion.al_guardar_tarea(t)
     return True
 
 
@@ -577,7 +574,7 @@ def _traer(resumen: dict, ahora):
                 continue
             aura_tarea = _privadas(item).get('aura_tarea', '')
             if aura_tarea:
-                # Tarea borrada (por ejemplo desde Notion): se limpia su evento. Se vuelve a mirar la base por si
+                # Tarea borrada: se limpia su evento. Se vuelve a mirar la base por si
                 # la tarea se guardó mientras se listaba.
                 huerfano = tareas.get(item['id']) is None or str(tareas[item['id']]) != aura_tarea
                 if huerfano and not Tarea.objects.filter(pk=aura_tarea if aura_tarea.isdigit() else 0, google_event_id=item['id']).exists():

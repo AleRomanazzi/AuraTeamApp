@@ -35,8 +35,6 @@ export const QK = {
   googleEstado: ['google-estado'],
   googleCalendarios: ['cal-google', 'estado'],
   etiquetas: ['cal-google', 'etiquetas'],
-  notionEstado: ['notion', 'estado'],
-  notionUsuarios: ['notion', 'usuarios'],
   notificaciones: ['notificaciones'],
   seguimiento: (fecha, rol) => ['seguimiento', fecha, rol],
 }

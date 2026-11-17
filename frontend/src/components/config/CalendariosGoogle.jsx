@@ -126,8 +126,8 @@ export default function CalendariosGoogle() {
   })
   const cambiarPrivada = async (et) => {
     const mensaje = et.privada
-      ? `«${et.nombre}» la va a poder ver y usar todo el equipo, y sus tareas pasan a la base Tareas de Notion.`
-      : `«${et.nombre}» va a quedar solo para los socios: el equipo deja de ver sus eventos y tareas, que pasan a la base privada de Notion.`
+      ? `«${et.nombre}» la va a poder ver y usar todo el equipo, con sus eventos y tareas.`
+      : `«${et.nombre}» va a quedar solo para los socios: el equipo deja de ver sus eventos y tareas.`
     if (await confirmar({ mensaje, confirmar: et.privada ? 'Abrir al equipo' : 'Hacer privada' })) elegir.mutate({ etiqueta: et.valor, privada: !et.privada })
   }
   if (q.isSuccess && !q.data.conectado) return null
@@ -145,7 +145,7 @@ export default function CalendariosGoogle() {
               directo en estos calendarios aparece en el panel, con el cliente reconocido por el color o por el título.
             </p>
             <p className="small muted">
-              Los calendarios nuevos de la cuenta aparecen solos como etiquetas. «Solo socios» la esconde del equipo (y sus tareas van a la base privada de Notion); «Ocultar» la saca de los formularios y de la sincronización.
+              Los calendarios nuevos de la cuenta aparecen solos como etiquetas. «Solo socios» la esconde del equipo (eventos y tareas); «Ocultar» la saca de los formularios y de la sincronización.
             </p>
             <div>
               {e.etiquetas.map((et) => (

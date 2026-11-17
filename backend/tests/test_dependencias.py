@@ -10,7 +10,6 @@ from apps.notificaciones.models import Notificacion
 
 @pytest.fixture
 def sin_sync(monkeypatch):
-    monkeypatch.setattr('apps.integraciones.notion.al_guardar_tarea', lambda *a, **k: None)
     monkeypatch.setattr('apps.calendario.google_calendar.al_guardar_tarea', lambda *a, **k: None)
 
 

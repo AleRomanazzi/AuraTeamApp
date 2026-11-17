@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import CalendariosGoogle from '../components/config/CalendariosGoogle'
 import ConfigEnvios from '../components/config/ConfigEnvios'
-import NotionConfig from '../components/config/NotionConfig'
 import PlantillaOnboarding from '../components/config/PlantillaOnboarding'
 import Field from '../components/ui/Field'
 import Modal from '../components/ui/Modal'
@@ -642,7 +641,6 @@ export default function Config() {
     { value: 'google', label: 'Google' },
     ...(me.es_admin
       ? [
-          { value: 'notion', label: 'Notion' },
           { value: 'usuarios', label: 'Usuarios' },
           { value: 'categorias', label: 'Categorías' },
           { value: 'onboarding', label: 'Onboarding' },
@@ -661,7 +659,6 @@ export default function Config() {
       {actual === 'perfil' ? <Perfil key={me.id} me={me} /> : null}
       {actual === 'google' ? <Google key={me.id} me={me} /> : null}
       {actual === 'google' && me.es_admin ? <CalendariosGoogle /> : null}
-      {actual === 'notion' ? <NotionConfig /> : null}
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
       {actual === 'categorias' ? <Categorias /> : null}
       {actual === 'onboarding' ? <PlantillaOnboarding /> : null}

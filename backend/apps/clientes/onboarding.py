@@ -1,6 +1,6 @@
 """Onboarding de clientes: la plantilla de pasos se convierte en tareas asignadas por rol al dar de alta un cliente.
 
-Las tareas llegan a Notion y a Google de a tandas, con las sincronizaciones incrementales (como el plan del mes).
+Las tareas llegan a Google de a tandas, con las sincronizaciones incrementales (como el plan del mes).
 """
 
 import logging

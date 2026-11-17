@@ -1,6 +1,6 @@
 """Etiquetas de eventos y tareas: las base más los calendarios que se van creando en la cuenta de Google de la agencia.
 
-Las privadas solo las ven los administradores (en el panel, en Google y, para tareas, en la base privada de Notion);
+Las privadas solo las ven los administradores (en el panel y en Google);
 las ocultas no se ofrecen en los formularios ni se sincronizan.
 """
 

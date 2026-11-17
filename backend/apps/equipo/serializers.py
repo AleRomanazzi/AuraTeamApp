@@ -63,12 +63,11 @@ class TareaSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'titulo', 'descripcion', 'cliente', 'cliente_nombre', 'cliente_color', 'estado', 'prioridad',
             'fecha_limite', 'fecha_inicio', 'hora_inicio', 'hora_fin', 'etiqueta', 'links', 'completada_en', 'asignados',
-            'asignados_nombres', 'vencida', 'creado', 'notion_url', 'creado_por', 'puede_editar', 'recurrente',
+            'asignados_nombres', 'vencida', 'creado', 'creado_por', 'puede_editar', 'recurrente',
             'subtareas', 'progreso', 'depende_de', 'dependencias', 'desbloquea', 'esperando', 'bloqueo_auto',
         )
         read_only_fields = ('id', 'completada_en', 'creado', 'recurrente', 'bloqueo_auto')
 
-    notion_url = serializers.SerializerMethodField()
     creado_por = serializers.PrimaryKeyRelatedField(source='user', read_only=True)
     puede_editar = serializers.SerializerMethodField()
 
@@ -77,9 +76,6 @@ class TareaSerializer(serializers.ModelSerializer):
         if request is None:
             return False
         return es_admin(request.user) or puede_editar_tarea(request.user, obj)
-
-    def get_notion_url(self, obj):
-        return f'https://www.notion.so/{obj.notion_page_id.replace("-", "")}' if obj.notion_page_id else None
 
     def to_representation(self, instance):
         instance.personas_asignadas = [a.persona for a in instance.asignaciones.all()]
@@ -443,7 +439,7 @@ class PersonaSerializer(serializers.ModelSerializer):
         model = Persona
         fields = (
             'id', 'nombre', 'rol', 'color', 'contactos', 'notas', 'tipo_vinculo', 'cuit', 'alias_cbu',
-            'activo', 'tareas', 'usuario', 'clientes', 'notion_user_id',
+            'activo', 'tareas', 'usuario', 'clientes',
         )
         read_only_fields = ('id',)
 

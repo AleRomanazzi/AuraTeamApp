@@ -222,8 +222,6 @@ td.actions-cell > * { margin-left: 4px; vertical-align: middle; }
 .task-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; min-width: 0; }
 .task-card-cliente { font-size: 12px; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-card-title { color: var(--text-strong); font-weight: 500; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
-.task-card-notion { margin-left: 6px; color: var(--text-dim); text-decoration: none; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; min-width: 22px; min-height: 22px; border-radius: 6px; vertical-align: middle; }
-.task-card-notion:hover { color: var(--accent-soft); background: var(--accent-bg); }
 .task-card-desc { font-size: 12px; color: var(--text-muted); margin-top: 4px; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .task-card-meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--text-muted); }
 .task-card-actions { display: flex; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); align-items: center; }

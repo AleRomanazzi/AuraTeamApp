@@ -75,14 +75,11 @@ def test_registrar_pago_desde_la_api_cierra_la_tarea(google_one, api_client, ema
 
 
 @pytest.mark.django_db
-def test_tareas_de_servicios_solo_las_ve_su_responsable_y_no_van_a_notion(google_one, equipo_client, api_client, emails, monkeypatch):
-    from apps.integraciones import notion
-
+def test_tareas_de_servicios_solo_las_ve_su_responsable(google_one, equipo_client, api_client, emails):
     generar_tareas_de_servicios(date(2026, 10, 7))
     titulos = [t['titulo'] for t in equipo_client.get('/api/tareas/').data]
     assert titulos == ['Pagar Google One']
     assert len(api_client.get('/api/tareas/').data) == 2
-    assert notion._es_de_servicio(Tarea.objects.get(titulo='Pagar Google One'))
 
 
 @pytest.mark.django_db

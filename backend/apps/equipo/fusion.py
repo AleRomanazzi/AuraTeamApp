@@ -13,7 +13,6 @@ from apps.calendario import google_calendar
 from apps.clientes.models import Cliente
 from apps.equipo.models import Subtarea, Tarea, TareaRecurrente
 from apps.equipo.services import estado_segun_subtareas, fijar_estado
-from apps.integraciones import notion
 
 OBJETIVOS = (
     ('Cycles Ferreyra', 'cycles'),
@@ -100,7 +99,7 @@ def aplicar(plan):
 
 def _fusionar(grupo):
     principal = grupo['principal']
-    bajas = [(t.notion_page_id, t.google_event_id, t.google_calendar_id) for t in grupo['borrar']]
+    bajas = [(t.google_event_id, t.google_calendar_id) for t in grupo['borrar']]
     with transaction.atomic():
         principal.titulo = grupo['plantilla'].titulo
         principal.save(update_fields=['titulo'])
@@ -113,8 +112,6 @@ def _fusionar(grupo):
         for tarea in grupo['borrar']:
             tarea.delete()
     principal._checklist_tocado = True
-    notion.al_guardar_tarea(principal)
     google_calendar.al_guardar_tarea(principal)
-    for page_id, gid, cal_id in bajas:
-        notion.al_borrar_tarea(page_id)
+    for gid, cal_id in bajas:
         google_calendar.al_borrar_tarea(gid, cal_id)

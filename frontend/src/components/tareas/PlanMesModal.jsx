@@ -110,8 +110,8 @@ export default function PlanMesModal({ cliente, tareas, onClose }) {
       })
     },
     onSuccess: ({ data }) => {
-      invalidar(qc, [...TAREAS, 'notion', 'cal-google'])
-      notify(`Se crearon ${data.creadas} tareas. Van llegando a Notion y al calendario.`)
+      invalidar(qc, [...TAREAS, 'cal-google'])
+      notify(`Se crearon ${data.creadas} tareas. Van llegando al calendario.`)
       setBorrador([])
     },
     onError: (e) => notifyError(e, 'No se pudieron crear las tareas'),

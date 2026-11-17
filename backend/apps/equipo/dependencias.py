@@ -1,7 +1,7 @@
 """Efectos de completar o reabrir una tarea sobre las que dependen de ella.
 
-Se llama después de guardar (API del panel y Notion → panel). Las tareas que cambian se mandan a Notion y Google;
-un fallo de esas integraciones o de los avisos nunca impide guardar.
+Se llama después de guardar desde la API del panel. Las tareas que cambian se mandan a Google;
+un fallo de Google o de los avisos nunca impide guardar.
 """
 
 import logging
@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _sincronizar(tarea):
     from apps.calendario import google_calendar
-    from apps.integraciones import notion
 
-    notion.al_guardar_tarea(tarea)
     google_calendar.al_guardar_tarea(tarea)
 
 

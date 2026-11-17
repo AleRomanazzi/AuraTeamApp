@@ -372,9 +372,7 @@ def test_etiqueta_inexistente_o_calendario_borrado(api_client, gcal):
 
 
 @pytest.mark.django_db
-def test_mover_el_evento_de_una_tarea_en_google_le_cambia_la_fecha(api_client, gcal, clientes, monkeypatch):
-    enviadas = []
-    monkeypatch.setattr('apps.integraciones.notion.al_guardar_tarea', lambda t: enviadas.append(t.pk))
+def test_mover_el_evento_de_una_tarea_en_google_le_cambia_la_fecha(api_client, gcal, clientes):
     google_calendar.sincronizar()
     hoy = timezone.localdate()
     r = api_client.post('/api/tareas/', {'titulo': 'Editar reels', 'fecha_limite': (hoy + timedelta(days=3)).isoformat()}, format='json')
@@ -387,7 +385,6 @@ def test_mover_el_evento_de_una_tarea_en_google_le_cambia_la_fecha(api_client, g
     assert _incremental()['tareas_movidas'] == 1
     tarea.refresh_from_db()
     assert (tarea.fecha_inicio, tarea.fecha_limite) == (hoy + timedelta(days=5), hoy + timedelta(days=6))
-    assert tarea.pk in enviadas
     assert _incremental().get('tareas_movidas') is None  # el eco no reaplica
 
     # Pasado a un horario.

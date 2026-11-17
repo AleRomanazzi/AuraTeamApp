@@ -14,7 +14,7 @@ from .models import AsignacionTarea, Liquidacion, Subtarea, Tarea, TareaRecurren
 MAX_LINKS_TAREA = 20
 
 # Las recurrentes cubren hasta fin del mes en que cae hoy + DIAS_RECURRENTES (así el mes siguiente queda armado desde
-# su última semana). Notion y Google las reciben de a tandas en las siguientes sincronizaciones.
+# su última semana). Google las recibe de a tandas en las siguientes sincronizaciones.
 DIAS_RECURRENTES = 7
 
 
@@ -117,7 +117,7 @@ def esperando(tarea) -> bool:
 def ajustar_por_dependencias(tarea, avanzo=False):
     """Bloquea o desbloquea la tarea según sus dependencias. Devuelve 'bloqueada', 'desbloqueada' o None.
 
-    Solo bloquea una que está Por hacer, o una que recién avanzó (`avanzo`, p. ej. desde Notion): una que ya estaba en
+    Solo bloquea una que está Por hacer, o una que recién avanzó (`avanzo`): una que ya estaba en
     curso cuando se reabrió una de sus dependencias no se toca. Solo desbloquea las que bloqueó el sistema; una que
     alguien dejó Bloqueada mientras espera a otras cuenta como bloqueada por ellas.
     """

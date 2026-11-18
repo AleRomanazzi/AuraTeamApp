@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.test import override_settings
+from django.utils import timezone
 
 from apps.core import cron
 from apps.equipo.models import Persona, Tarea
@@ -76,6 +77,8 @@ def test_registrar_pago_desde_la_api_cierra_la_tarea(google_one, api_client, ema
 
 @pytest.mark.django_db
 def test_tareas_de_servicios_solo_las_ve_su_responsable(google_one, equipo_client, api_client, emails):
+    # Con el cron al día, listar tareas no dispara el respaldo (que generaría también las del mes en curso).
+    EstadoCron.objects.update_or_create(pk=1, defaults={'ultima_corrida': timezone.now()})
     generar_tareas_de_servicios(date(2026, 10, 7))
     titulos = [t['titulo'] for t in equipo_client.get('/api/tareas/').data]
     assert titulos == ['Pagar Google One']

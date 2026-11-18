@@ -110,7 +110,9 @@ def clientes(db):
 
 
 def _evento(api_client, **extra):
-    body = {'titulo': 'Grabación', 'inicio': '2026-10-05T10:00:00-03:00', 'fin': '2026-10-05T12:00:00-03:00', **extra}
+    # Dentro de la ventana que se sincroniza con Google (ENVIAR_DESDE / TRAER_DESDE).
+    dia = (timezone.localdate() + timedelta(days=5)).isoformat()
+    body = {'titulo': 'Grabación', 'inicio': f'{dia}T10:00:00-03:00', 'fin': f'{dia}T12:00:00-03:00', **extra}
     r = api_client.post('/api/cal-eventos/', body, format='json')
     assert r.status_code == 201, r.data
     return EventoUnico.objects.get(pk=r.data['id'])

@@ -136,11 +136,11 @@ export default function CobrosTabla({ cobros, mostrarCliente = true, mostrarPeri
                         </a>
                         {c.cliente_email ? (
                           <button type="button" className="btn btn-secondary btn-xs" disabled={recordar.isPending} onClick={() => enviarRecordatorio(c)} title="Enviar recordatorio ahora por email (Gmail de la agencia)">
-                            ✉ Recordar
+                            Recordar
                           </button>
                         ) : (
                           <a className="btn btn-secondary btn-xs" href={linkEmail(c)} title="Recordatorio por email (el cliente no tiene email cargado)">
-                            ✉
+                            Email
                           </a>
                         )}
                       </>

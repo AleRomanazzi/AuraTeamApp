@@ -147,7 +147,7 @@ function DriveClientes() {
   return (
     <div className="info-box" style={{ marginTop: 8 }}>
       <div>
-        📁 Drive: las carpetas de los clientes viven en Mi unidad → CLIENTES. Este botón busca la de cada cliente sin carpeta por su nombre o razón social y la vincula; nunca crea carpetas.
+        Drive: las carpetas de los clientes viven en Mi unidad → CLIENTES. Este botón busca la de cada cliente sin carpeta por su nombre o razón social y la vincula; nunca crea carpetas.
       </div>
       <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 8 }} disabled={vincular.isPending} onClick={() => vincular.mutate()}>
         {vincular.isPending ? 'Buscando…' : 'Vincular carpetas existentes'}

@@ -11,7 +11,7 @@ import QueryState from '../ui/QueryState'
 import Tag from '../ui/Tag'
 
 const ESTADOS = { borrador: ['Borrador', 'yellow'], enviado: ['Enviado', 'green'], error: ['Error', 'red'], descartado: ['Descartado', ''] }
-const TIPOS = { reporte: '📄 Reporte', recordatorio: '💵 Recordatorio' }
+const TIPOS = { reporte: 'Reporte', recordatorio: 'Recordatorio' }
 
 function useAccionesEnvio(onHecho) {
   const qc = useQueryClient()
@@ -112,7 +112,7 @@ export default function EnviosCliente({ clienteId, email }) {
           <span className="dot" /> Emails al cliente
         </div>
         <button type="button" className="btn btn-secondary btn-sm" disabled={preparar.isPending} onClick={() => preparar.mutate()}>
-          📄 Reporte de {monthLabel(anterior, { month: 'long' })}
+          Reporte de {monthLabel(anterior, { month: 'long' })}
         </button>
       </div>
       {!email ? <div className="info-box down">El cliente no tiene email cargado: los reportes y recordatorios no se pueden enviar.</div> : null}

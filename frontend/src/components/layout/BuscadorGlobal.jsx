@@ -8,7 +8,7 @@ import { GESTION_INTERNA } from '../../lib/constants'
 import { QK } from '../../lib/queryKeys'
 
 const PAGINAS = [
-  { label: 'Dashboard', to: '/', admin: true },
+  { label: 'Inicio', to: '/', admin: true },
   { label: 'Mi panel', to: '/mi-panel' },
   { label: 'Tareas', to: '/tareas' },
   { label: 'Calendario', to: '/calendario' },
@@ -17,7 +17,7 @@ const PAGINAS = [
   { label: 'Movimientos', to: '/movimientos', admin: true },
   { label: 'Suscripciones', to: '/suscripciones', admin: true },
   { label: 'Equipo hoy', to: '/equipo-hoy', admin: true },
-  { label: 'Equipo', to: '/equipo', admin: true },
+  { label: 'Personas del equipo', to: '/equipo', admin: true },
   { label: 'Pagos al equipo', to: '/pagos-equipo', admin: true },
   { label: 'Gmail', to: '/gmail', admin: true },
   { label: 'Estadísticas', to: '/estadisticas', permiso: 'estadisticas' },

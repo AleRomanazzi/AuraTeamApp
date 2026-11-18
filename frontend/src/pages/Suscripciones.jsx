@@ -364,7 +364,7 @@ export default function Suscripciones() {
                           borrar.mutate(s.id)
                         }
                       >
-                        🗑
+                        Eliminar
                       </button>
                     </td>
                   </tr>

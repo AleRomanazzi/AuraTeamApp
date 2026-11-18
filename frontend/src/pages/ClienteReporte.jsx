@@ -26,7 +26,7 @@ export default function ClienteReporte() {
           <input type="checkbox" checked={interno} onChange={(e) => setInterno(e.target.checked)} /> Incluir datos internos (costos y margen)
         </label>
         <button type="button" className="btn btn-primary btn-sm" onClick={() => window.print()}>
-          🖨 Imprimir / PDF
+          Imprimir / PDF
         </button>
       </div>
       <QueryState query={q}>

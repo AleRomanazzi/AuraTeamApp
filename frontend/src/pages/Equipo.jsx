@@ -300,7 +300,7 @@ export default function Equipo() {
                       })) && borrar.mutate(p.id)
                     }
                   >
-                    🗑
+                    Eliminar
                   </button>
                 </div>
               </div>

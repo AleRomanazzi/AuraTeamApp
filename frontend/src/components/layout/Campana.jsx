@@ -4,19 +4,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { QK } from '../../lib/queryKeys'
 
-const ICONOS = {
-  tarea_asignada: '📌',
-  tarea_estado: '👀',
-  tarea_hecha: '✅',
-  tarea_disponible: '🔓',
-  tarea_comentario: '💬',
-  deadline_manana: '⏰',
-  deadline_hoy: '⏰',
-  tarea_vencida: '⚠️',
-  servicio: '💳',
-  aporte: '💸',
-  cliente: '🤝',
-  sistema: '🔔',
+// Color del punto de cada aviso: rojo lo urgente, ámbar lo que espera revisión, azul lo informativo.
+const TONOS = {
+  tarea_vencida: 'var(--accent3)',
+  deadline_hoy: 'var(--accent3)',
+  deadline_manana: 'var(--gold)',
+  tarea_estado: 'var(--gold)',
+  servicio: 'var(--gold)',
+  aporte: 'var(--gold)',
+  tarea_hecha: 'var(--success)',
+  tarea_disponible: 'var(--success)',
 }
 
 function hace(fecha) {
@@ -113,9 +110,7 @@ export default function Campana() {
               {lista.map((n) => (
                 <li key={n.id}>
                   <button type="button" className={`campana-item${n.leida ? '' : ' no-leida'}`} onClick={() => abrir(n)}>
-                    <span className="campana-icono" aria-hidden="true">
-                      {ICONOS[n.tipo] ?? '🔔'}
-                    </span>
+                    <span className="campana-icono" aria-hidden="true" style={{ background: TONOS[n.tipo] ?? 'var(--accent)' }} />
                     <span className="campana-texto">
                       <span className="campana-titulo">{n.titulo}</span>
                       {n.cuerpo ? <span className="campana-cuerpo">{n.cuerpo}</span> : null}

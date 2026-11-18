@@ -245,7 +245,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
         </div>
         {pendientes.length ? (
           <div className="tarea-espera" role="status">
-            🔒 Espera a {pendientes.map((d) => `«${d.titulo}»`).join(', ')}. Pasa sola a Por hacer (con aviso por mail) cuando {pendientes.length === 1 ? 'esté Hecha' : 'estén Hechas'}.
+            Espera a {pendientes.map((d) => `«${d.titulo}»`).join(', ')}. Pasa sola a Por hacer (con aviso por mail) cuando {pendientes.length === 1 ? 'esté Hecha' : 'estén Hechas'}.
           </div>
         ) : null}
 
@@ -300,7 +300,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               const d = porId.get(id)
               return (
                 <span key={id} className={`chip active tarea-dep${d?.estado === 'hecha' ? ' tarea-dep--hecha' : ''}`}>
-                  {d?.estado === 'hecha' ? '✓' : '🔒'} {d?.titulo ?? `Tarea ${id}`}
+                  {d?.estado === 'hecha' ? '✓ ' : ''}{d?.titulo ?? `Tarea ${id}`}
                   <em> · {estadoLabel(d?.estado)}</em>
                   {editable ? (
                     <button type="button" className="link-btn down" aria-label={`Quitar «${d?.titulo ?? id}»`} onClick={() => setF((s) => ({ ...s, depende_de: s.depende_de.filter((x) => x !== id) }))}>

@@ -6,6 +6,9 @@ import App from './App.jsx'
 import './styles/tokens.css'
 import './styles/html-app.css'
 import './styles/globals.css'
+import { aplicarTema, temaGuardado } from './lib/tema'
+
+aplicarTema(temaGuardado())
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,9 +35,9 @@ createRoot(document.getElementById('root')).render(
       <Toaster
         position="top-center"
         toastOptions={{
-          style: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border-strong)', borderRadius: '12px', fontSize: '14px', maxWidth: 'min(460px, 92vw)' },
-          success: { iconTheme: { primary: '#34d399', secondary: '#060b14' } },
-          error: { iconTheme: { primary: '#f87171', secondary: '#060b14' } },
+          style: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border-strong)', borderRadius: '8px', fontSize: '14px', maxWidth: 'min(460px, 92vw)' },
+          success: { iconTheme: { primary: 'var(--success)', secondary: 'var(--on-color)' } },
+          error: { iconTheme: { primary: 'var(--accent3)', secondary: 'var(--on-color)' } },
         }}
       />
     </QueryClientProvider>

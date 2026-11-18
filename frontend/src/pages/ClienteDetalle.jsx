@@ -165,7 +165,7 @@ function TareasCliente({ cliente }) {
                 <div className="list-row-title">{t.titulo}</div>
                 <div className="list-row-sub">
                   <Tag color={labelTag(ESTADOS_TAREA, t.estado)}>{labelDe(ESTADOS_TAREA, t.estado)}</Tag>{' '}
-                  {t.asignados_nombres.length ? `👤 ${t.asignados_nombres.join(', ')}` : 'Sin responsable'}
+                  {t.asignados_nombres.length ? t.asignados_nombres.join(', ') : 'Sin responsable'}
                 </div>
               </div>
               <div className={`list-row-side small${t.vencida ? ' down' : ''}`}>{t.fecha_limite ? formatFecha(t.fecha_limite) : <span className="muted">Sin fecha</span>}</div>
@@ -241,7 +241,7 @@ function Contratos({ clienteId }) {
               <div className="contrato-actions">
                 {c.periodicidad !== 'unico' ? (
                   <button type="button" className="btn btn-secondary btn-xs" onClick={() => setAjustando(c)}>
-                    📈 Ajustar precio
+                    Ajustar precio
                   </button>
                 ) : null}
                 <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(c)}>
@@ -514,7 +514,7 @@ export default function ClienteDetalle() {
               {esAdmin ? (
                 <>
                   <Link to={`/clientes/${clienteId}/reporte?mes=${currentMonth()}`} className="btn btn-secondary btn-sm">
-                    📄 Reporte mensual
+                    Reporte mensual
                   </Link>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditando(true)}>
                     Editar

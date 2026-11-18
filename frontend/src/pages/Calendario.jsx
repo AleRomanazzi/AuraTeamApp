@@ -190,7 +190,7 @@ export default function Calendario() {
                           borrar.mutate(it.id)
                         }
                       >
-                        🗑
+                        Eliminar
                       </button>
                     </span>
                   ) : null}

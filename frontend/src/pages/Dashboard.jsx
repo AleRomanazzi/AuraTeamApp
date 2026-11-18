@@ -22,7 +22,7 @@ function Proximos({ items }) {
       <div key={`${i.tipo}-${i.id}`} className="list-row">
         <div className="list-row-main">
           <div className="list-row-title">
-            {i.tipo === 'cobro' ? '💵' : '🔁'} {i.titulo}
+            {i.titulo}
           </div>
           <div className="list-row-sub">{i.detalle}</div>
         </div>
@@ -178,7 +178,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader titulo="Dashboard" subtitulo={`Resumen de la agencia — ${monthLabel(mes)}`}>
+      <PageHeader titulo="Inicio" subtitulo={`Resumen de la agencia — ${monthLabel(mes)}`}>
         <MonthPicker value={mes} onChange={setMes} />
       </PageHeader>
       <div style={{ marginBottom: 16 }}>
@@ -217,7 +217,7 @@ export default function Dashboard() {
                       {fmtCorto(d.deuda_vencida)}
                     </div>
                     {d.top_deudores.length === 0 ? (
-                      <div className="empty">Ningún cliente con pagos vencidos. 🎉</div>
+                      <div className="empty">Ningún cliente con pagos vencidos.</div>
                     ) : (
                       d.top_deudores.map((t) => (
                         <Link key={t.cliente} to={`/clientes/${t.cliente}`} className="list-row list-row--link">

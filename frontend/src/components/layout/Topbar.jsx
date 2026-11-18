@@ -6,6 +6,8 @@ import { isSignedIn } from '../../features/google/gapiClient'
 import { useGoogleStore } from '../../features/google/googleStore'
 import { useMe } from '../../hooks/useData'
 import Campana from './Campana'
+import Icono from '../ui/Icono'
+import { useTema } from '../../lib/tema'
 import { cerrarSesion } from '../../lib/session'
 
 const hoy = new Date().toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -15,6 +17,7 @@ export default function Topbar({ onToggleSidebar, onBuscar }) {
   const qc = useQueryClient()
   const { data: me } = useMe()
   const [saliendo, setSaliendo] = useState(false)
+  const [tema, alternarTema] = useTema()
   useGoogleStore((s) => s.tokenVersion)
   const googleActivo = Boolean(me?.google_conectado) && isSignedIn()
 
@@ -36,7 +39,7 @@ export default function Topbar({ onToggleSidebar, onBuscar }) {
         <span>AuraTeam</span>
       </Link>
       <button type="button" className="topbar-buscar" onClick={onBuscar} aria-label="Buscar (Cmd+K)">
-        <span aria-hidden>⌕</span>
+        <Icono nombre="buscar" size={15} />
         <span className="solo-escritorio">Buscar…</span>
         <kbd className="solo-escritorio">⌘K</kbd>
       </button>
@@ -49,8 +52,24 @@ export default function Topbar({ onToggleSidebar, onBuscar }) {
           </span>
         ) : null}
         {me ? <Campana /> : null}
-        <button type="button" className="btn btn-secondary btn-sm" onClick={salir} disabled={saliendo}>
-          {saliendo ? 'Saliendo…' : 'Salir'}
+        <button
+          type="button"
+          className="tema-switch"
+          role="switch"
+          aria-checked={tema === 'dark'}
+          aria-label="Modo oscuro"
+          title={tema === 'dark' ? 'Pasar a modo claro' : 'Pasar a modo oscuro'}
+          onClick={alternarTema}
+        >
+          <span className="tema-switch-pista">
+            <Icono nombre="sol" size={13} className="tema-switch-sol" />
+            <Icono nombre="luna" size={13} className="tema-switch-luna" />
+            <span className="tema-switch-perilla" />
+          </span>
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={salir} disabled={saliendo} aria-label="Salir">
+          <Icono nombre="salir" size={15} />
+          <span className="solo-escritorio">{saliendo ? 'Saliendo…' : 'Salir'}</span>
         </button>
       </div>
     </header>

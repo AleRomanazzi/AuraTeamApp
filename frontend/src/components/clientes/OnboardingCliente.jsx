@@ -95,7 +95,7 @@ function DriveModal({ clienteId, actual, onClose }) {
         <>
           <p className="muted small">O dejá que el panel la busque por nombre dentro de «CLIENTES» en Mi unidad. Si no existe, la crea ahí.</p>
           <button type="button" className="btn btn-secondary btn-sm" disabled={guardar.isPending} onClick={() => guardar.mutate({})}>
-            {guardar.isPending ? 'Buscando…' : '🔎 Buscar en CLIENTES (o crear)'}
+            {guardar.isPending ? 'Buscando…' : 'Buscar en CLIENTES (o crear)'}
           </button>
         </>
       ) : null}
@@ -134,12 +134,12 @@ export default function OnboardingCliente({ clienteId, esAdmin }) {
         <div className="header-actions">
           {d.drive_url ? (
             <a href={d.drive_url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
-              📁 Carpeta de Drive
+              Carpeta de Drive
             </a>
           ) : null}
           {esAdmin ? (
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditandoDrive(true)}>
-              {d.drive_url ? 'Cambiar carpeta' : '📁 Vincular carpeta de Drive'}
+              {d.drive_url ? 'Cambiar carpeta' : 'Vincular carpeta de Drive'}
             </button>
           ) : null}
           {!d.total && esAdmin ? (
@@ -166,7 +166,7 @@ export default function OnboardingCliente({ clienteId, esAdmin }) {
                   <Link to={`/tareas?tarea=${t.id}`} className="list-row-title">
                     {t.titulo}
                   </Link>
-                  <div className="list-row-sub">{t.asignados_nombres.length ? `👤 ${t.asignados_nombres.join(', ')}` : 'Sin responsable'}</div>
+                  <div className="list-row-sub">{t.asignados_nombres.length ? t.asignados_nombres.join(', ') : 'Sin responsable'}</div>
                 </div>
                 <div className={`list-row-side small${t.vencida ? ' down' : ''}`}>{t.fecha_limite ? formatFechaCorta(t.fecha_limite) : ''}</div>
               </div>

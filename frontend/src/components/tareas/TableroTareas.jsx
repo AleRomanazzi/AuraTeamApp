@@ -60,11 +60,11 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado, selecc
                 <div className="task-card-title">{t.titulo}</div>
                 {t.descripcion ? <div className="task-card-desc">{t.descripcion}</div> : null}
                 <div className="task-card-meta">
-                  <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? '⚠ Venció ' : '📅 '}${formatHorarioTarea(t)}` : 'Sin fecha'}</span>
-                  {t.esperando ? <span title={`Espera a: ${t.dependencias.filter((d) => d.estado !== 'hecha').map((d) => d.titulo).join(', ')}`}>🔒 Esperando</span> : null}
+                  <span className={t.vencida ? 'down' : ''}>{t.fecha_limite ? `${t.vencida ? 'Venció ' : ''}${formatHorarioTarea(t)}` : 'Sin fecha'}</span>
+                  {t.esperando ? <span title={`Espera a: ${t.dependencias.filter((d) => d.estado !== 'hecha').map((d) => d.titulo).join(', ')}`}>Esperando</span> : null}
                   {t.progreso?.total ? <span title={`${t.progreso.porcentaje}%`}>{t.progreso.hechas}/{t.progreso.total}</span> : null}
-                  {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
-                  {t.links?.length ? <span>🔗 {t.links.length}</span> : null}
+                  {t.asignados_nombres.length ? <span>{t.asignados_nombres.join(', ')}</span> : null}
+                  {t.links?.length ? <span>{t.links.length} link{t.links.length === 1 ? '' : 's'}</span> : null}
                 </div>
                 {t.puede_editar && !seleccion ? (
                   <div className="task-card-actions">

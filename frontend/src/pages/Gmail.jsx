@@ -97,7 +97,7 @@ export default function Gmail() {
           {bandeja.isFetching ? 'Actualizando…' : '↻ Actualizar'}
         </button>
         <button type="button" className="btn btn-primary btn-sm" disabled={!conectado} onClick={() => setRedactando({})}>
-          ✉ Redactar
+          Redactar
         </button>
       </PageHeader>
       {!conectado ? (

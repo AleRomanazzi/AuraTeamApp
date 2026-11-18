@@ -187,7 +187,7 @@ export default function Cobros() {
           query={q}
           vacio={
             vista === 'deuda' ? (
-              '🎉 Ningún cliente debe nada.'
+              'Ningún cliente debe nada.'
             ) : (
               <>
                 No hay cobros en {monthLabel(mes)}. Usá <strong>Generar cobros</strong> para crearlos desde los contratos activos.

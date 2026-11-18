@@ -183,7 +183,7 @@ function Adjuntos({ tx }) {
       {tx.adjuntos.map((a) => (
         <span key={a.id} className="attach-chip">
           <button type="button" className="link-btn" title={a.nombre_original} onClick={() => abrirArchivo(`adjuntos/${a.id}/descargar/`).catch((e) => notifyError(e))}>
-            📎 {a.nombre_original.length > 16 ? `${a.nombre_original.slice(0, 14)}…` : a.nombre_original}
+            {a.nombre_original.length > 16 ? `${a.nombre_original.slice(0, 14)}…` : a.nombre_original}
           </button>
           <button
             type="button"
@@ -342,8 +342,8 @@ export default function Movimientos() {
                       <td className="celda-principal">
                         <div className="cell-title">{t.descripcion}</div>
                         <div className="cell-sub">
-                          {t.cliente_nombre ? <span>🏷️ {t.cliente_nombre} </span> : null}
-                          {t.persona_nombre ? <span>👤 {t.persona_nombre} </span> : null}
+                          {t.cliente_nombre ? <span>{t.cliente_nombre} · </span> : null}
+                          {t.persona_nombre ? <span>{t.persona_nombre} </span> : null}
                           {t.medio_pago ? <span>· {labelDe(MEDIOS_PAGO, t.medio_pago)} </span> : null}
                           {t.origen ? <Tag color="purple">{ORIGEN[t.origen.tipo]}</Tag> : null}
                         </div>
@@ -364,7 +364,7 @@ export default function Movimientos() {
                           Editar
                         </button>{' '}
                         <button type="button" className="btn btn-danger btn-xs" onClick={() => eliminar(t)} aria-label="Eliminar">
-                          🗑
+                          Eliminar
                         </button>
                       </td>
                     </tr>

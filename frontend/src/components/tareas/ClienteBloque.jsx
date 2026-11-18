@@ -94,13 +94,13 @@ export default function ClienteBloque({ cliente, tareas, marcasPorDia, semana, p
                   <span className="tc-tarea-meta">
                     <span className={`tag tag-${est?.tag || 'neutral'}`}>{est?.label}</span>
                     {fechaTarea(t, hoy)}
-                    {t.esperando ? <span title="Espera a otras tareas">🔒</span> : null}
+                    {t.esperando ? <span title="Espera a otras tareas">Esperando</span> : null}
                     {t.progreso?.total ? (
                       <span className="tc-progreso" title={`${t.progreso.porcentaje}%`}>
                         {t.progreso.hechas}/{t.progreso.total}
                       </span>
                     ) : null}
-                    {t.links?.length ? <span className="muted">🔗 {t.links.length}</span> : null}
+                    {t.links?.length ? <span className="muted">{t.links.length} link{t.links.length === 1 ? '' : 's'}</span> : null}
                   </span>
                 </button>
                 {asignados.length ? (

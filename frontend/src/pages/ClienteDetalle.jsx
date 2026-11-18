@@ -8,6 +8,7 @@ import EnviosCliente from '../components/clientes/EnviosCliente'
 import OnboardingCliente from '../components/clientes/OnboardingCliente'
 import CobrosTabla from '../components/cobros/CobrosTabla'
 import AsignacionForm from '../components/equipo/AsignacionForm'
+import TareaSheet from '../components/tareas/TareaSheet'
 import BarChart from '../components/ui/BarChart'
 import LineChart from '../components/ui/LineChart'
 import PageHeader from '../components/ui/PageHeader'
@@ -18,7 +19,7 @@ import Tag from '../components/ui/Tag'
 import { useEsAdmin, usePuede } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { ESTADOS_CLIENTE, ESTADOS_TAREA, MODALIDADES, PERIODICIDADES_CONTRATO, PLATAFORMAS, labelDe } from '../lib/constants'
-import { currentMonth, fmt, fmtCorto, formatFecha, monthLabel } from '../lib/format'
+import { currentMonth, diaDe, fmt, fmtCorto, formatFecha, formatFechaCorta, horaDe, monthLabel, sumarDias, todayISO } from '../lib/format'
 import { num } from '../lib/money'
 import { notify, notifyError } from '../lib/notify'
 import { DINERO, QK, invalidar } from '../lib/queryKeys'
@@ -44,6 +45,14 @@ function Resumen({ cliente }) {
       ) : null,
     ],
     ['Cliente desde', formatFecha(cliente.fecha_alta)],
+    [
+      'Carpeta de Drive',
+      cliente.drive_url ? (
+        <a href={cliente.drive_url} target="_blank" rel="noreferrer">
+          Abrir carpeta
+        </a>
+      ) : null,
+    ],
   ]
   return (
     <div className="grid-2">
@@ -70,24 +79,88 @@ function Resumen({ cliente }) {
   )
 }
 
-function TareasCliente({ clienteId }) {
+/** Lo que viene para el cliente: eventos del calendario y tareas con fecha de las próximas 2 semanas. */
+function AgendaCliente({ cliente }) {
+  const hoy = todayISO()
+  const rango = { cliente: cliente.id, desde: hoy, hasta: `${sumarDias(hoy, 14)}T23:59:59` }
+  const eventos = useQuery({ queryKey: QK.calEventos(rango), queryFn: () => getList('cal-eventos/', rango) })
+  const params = { cliente: cliente.id }
+  const tareas = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
+  const items = useMemo(() => {
+    const limite = sumarDias(hoy, 14)
+    return [
+      ...(eventos.data ?? []).map((e) => ({ key: `e${e.id}`, dia: diaDe(e.inicio), hora: horaDe(e.inicio), titulo: e.titulo, tipo: 'Evento' })),
+      ...(tareas.data ?? [])
+        .filter((t) => t.estado !== 'hecha' && t.fecha_limite && t.fecha_limite <= limite)
+        .map((t) => ({ key: `t${t.id}`, dia: t.fecha_limite, hora: t.hora_inicio || '', titulo: t.titulo, tipo: t.vencida ? 'Vencida' : 'Tarea', vencida: t.vencida })),
+    ].sort((a, b) => `${a.dia}${a.hora}`.localeCompare(`${b.dia}${b.hora}`))
+  }, [eventos.data, tareas.data, hoy])
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="card-title-row">
+        <div className="card-title">
+          <span className="dot" /> Próximas 2 semanas
+        </div>
+        <Link to={`/tareas?cliente=${cliente.id}`} className="btn btn-secondary btn-sm">
+          Ver en Tareas
+        </Link>
+      </div>
+      {eventos.isLoading || tareas.isLoading ? <div className="muted small">Cargando…</div> : null}
+      {!eventos.isLoading && !tareas.isLoading && !items.length ? <div className="empty">Nada agendado para las próximas 2 semanas.</div> : null}
+      {items.map((i) => (
+        <div key={i.key} className="list-row">
+          <div className="list-row-main">
+            <div className="list-row-title">{i.titulo}</div>
+            <div className="list-row-sub">{i.tipo}</div>
+          </div>
+          <div className={`list-row-side small${i.vencida ? ' down' : ''}`}>
+            {formatFechaCorta(i.dia)}
+            {i.hora ? ` · ${i.hora}` : ''}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TareasCliente({ cliente }) {
+  const clienteId = cliente.id
   const params = { cliente: clienteId }
   const q = useQuery({ queryKey: QK.tareas(params), queryFn: () => getList('tareas/', params) })
-  const ordenadas = useMemo(() => [...(q.data ?? [])].sort((a, b) => (a.estado === 'hecha') - (b.estado === 'hecha')), [q.data])
+  const [abierta, setAbierta] = useState(null)
+  const [verHechas, setVerHechas] = useState(false)
+  const ordenadas = useMemo(
+    () =>
+      [...(q.data ?? [])]
+        .filter((t) => verHechas || t.estado !== 'hecha')
+        .sort((a, b) => (a.estado === 'hecha') - (b.estado === 'hecha') || String(a.fecha_limite || '9999').localeCompare(String(b.fecha_limite || '9999'))),
+    [q.data, verHechas],
+  )
+  const hechas = (q.data ?? []).filter((t) => t.estado === 'hecha').length
   return (
     <div className="card">
       <div className="card-title-row">
         <div className="card-title">
           <span className="dot" /> Tareas del cliente
         </div>
-        <Link to="/tareas" className="btn btn-secondary btn-sm">
-          Ir a Tareas
-        </Link>
+        <div className="header-actions">
+          {hechas ? (
+            <label className="check-row small">
+              <input type="checkbox" checked={verHechas} onChange={(e) => setVerHechas(e.target.checked)} /> Ver hechas ({hechas})
+            </label>
+          ) : null}
+          <Link to={`/tareas?cliente=${clienteId}`} className="btn btn-secondary btn-sm">
+            Ver en Tareas
+          </Link>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setAbierta({})}>
+            + Nueva tarea
+          </button>
+        </div>
       </div>
-      <QueryState query={q} esVacio={() => ordenadas.length === 0} vacio="No hay tareas para este cliente.">
+      <QueryState query={q} esVacio={() => ordenadas.length === 0} vacio={hechas ? 'No hay tareas abiertas.' : 'No hay tareas para este cliente.'}>
         <div>
           {ordenadas.map((t) => (
-            <div key={t.id} className={`list-row${t.estado === 'hecha' ? ' row-muted' : ''}`}>
+            <button key={t.id} type="button" className={`list-row list-row--link${t.estado === 'hecha' ? ' row-muted' : ''}`} onClick={() => setAbierta({ tarea: t })}>
               <div className="list-row-main">
                 <div className="list-row-title">{t.titulo}</div>
                 <div className="list-row-sub">
@@ -96,10 +169,11 @@ function TareasCliente({ clienteId }) {
                 </div>
               </div>
               <div className={`list-row-side small${t.vencida ? ' down' : ''}`}>{t.fecha_limite ? formatFecha(t.fecha_limite) : <span className="muted">Sin fecha</span>}</div>
-            </div>
+            </button>
           ))}
         </div>
       </QueryState>
+      {abierta ? <TareaSheet tarea={abierta.tarea} cliente={abierta.tarea ? null : cliente} onClose={() => setAbierta(null)} /> : null}
     </div>
   )
 }
@@ -483,10 +557,11 @@ export default function ClienteDetalle() {
             {tab === 'resumen' ? (
               <>
                 <Resumen cliente={c} />
+                <AgendaCliente cliente={c} />
                 <OnboardingCliente clienteId={clienteId} esAdmin={esAdmin} />
               </>
             ) : null}
-            {tab === 'tareas' ? <TareasCliente clienteId={clienteId} /> : null}
+            {tab === 'tareas' ? <TareasCliente cliente={c} /> : null}
             {tab === 'contratos' ? <Contratos clienteId={clienteId} /> : null}
             {tab === 'cobros' ? <CobrosCliente clienteId={clienteId} /> : null}
             {tab === 'equipo' ? <EquipoCliente clienteId={clienteId} /> : null}

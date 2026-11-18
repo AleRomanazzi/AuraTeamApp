@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import EventoForm from '../components/calendario/EventoForm'
+import LoteBar from '../components/tareas/LoteBar'
 import CalendarioCliente from '../components/tareas/CalendarioCliente'
 import ClienteBloque from '../components/tareas/ClienteBloque'
 import PlanMesModal from '../components/tareas/PlanMesModal'
@@ -12,9 +13,9 @@ import TareaSheet from '../components/tareas/TareaSheet'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
 import { useSyncCalendario } from '../features/google/useSyncCalendario'
-import { puede, useClientes, useMe, usePersonas } from '../hooks/useData'
+import { puede, useClientes, useEtiquetas, useMe, usePersonas } from '../hooks/useData'
 import { api, getList } from '../lib/api'
-import { GESTION_INTERNA } from '../lib/constants'
+import { GESTION_INTERNA, PRIORIDADES } from '../lib/constants'
 import { diaDe, lunesDe, sumarDias, todayISO } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
 import { QK, TAREAS, invalidar } from '../lib/queryKeys'
@@ -49,6 +50,14 @@ export default function Tareas() {
   const [evento, setEvento] = useState(null)
   const [recurrentes, setRecurrentes] = useState(false)
   const [plan, setPlan] = useState(null)
+  const [porPersona, setPorPersona] = useState('')
+  const [porEtiqueta, setPorEtiqueta] = useState('')
+  const [porPrioridad, setPorPrioridad] = useState('')
+  const [verHechas, setVerHechas] = useState(false)
+  const [seleccion, setSeleccion] = useState(null)
+  const etiquetas = useEtiquetas()
+  // ?cliente=ID (desde la ficha del cliente) muestra solo ese cliente.
+  const clienteUrl = params.get('cliente') === 'interno' ? 'interno' : Number(params.get('cliente')) || null
 
   const hoy = todayISO()
   const lunes = lunesDe(hoy)
@@ -67,7 +76,11 @@ export default function Tareas() {
   const tareaAbierta = tareaElegida ?? (deUrl ? { tarea: deUrl } : null)
   const cerrarTarea = () => {
     setTareaAbierta(null)
-    if (idUrl) setParams({}, { replace: true })
+    if (idUrl) {
+      const p = new URLSearchParams(params)
+      p.delete('tarea')
+      setParams(p, { replace: true })
+    }
   }
 
   const cambiarEstado = useMutation({
@@ -134,18 +147,26 @@ export default function Tareas() {
     const s = busqueda.trim().toLowerCase()
     return (q.data ?? []).filter((t) => {
       if (s && !`${t.titulo} ${t.descripcion} ${t.cliente_nombre ?? GESTION_INTERNA}`.toLowerCase().includes(s)) return false
+      if (porPersona && !t.asignados.includes(Number(porPersona))) return false
+      if (porEtiqueta && t.etiqueta !== porEtiqueta) return false
+      if (porPrioridad && t.prioridad !== porPrioridad) return false
       if (filtro === 'mias') return Boolean(me?.persona) && t.asignados.includes(me.persona)
       if (filtro === 'vencidas') return t.vencida
       if (filtro === 'semana') return Boolean(t.fecha_limite) && t.fecha_limite >= semana[0] && t.fecha_limite <= semana[6]
       return true
     })
-  }, [q.data, busqueda, filtro, me, semana])
+  }, [q.data, busqueda, filtro, me, semana, porPersona, porEtiqueta, porPrioridad])
 
   const bloques = useMemo(() => {
     const abiertas = filtradas.filter((t) => t.estado !== 'hecha')
+    const listadas = verHechas ? filtradas : abiertas
     const base = esAdmin ? clientes.filter((c) => c.estado === 'activo') : (mios.data ?? [])
     const lista = new Map(base.map((c) => [c.id, { id: c.id, nombre: c.nombre, color: c.color }]))
-    for (const t of abiertas) {
+    if (typeof clienteUrl === 'number' && !lista.has(clienteUrl)) {
+      const c = clientes.find((x) => x.id === clienteUrl)
+      if (c) lista.set(c.id, { id: c.id, nombre: c.nombre, color: c.color })
+    }
+    for (const t of listadas) {
       const mia = Boolean(me?.persona) && t.asignados.includes(me.persona)
       if (t.cliente && !lista.has(t.cliente) && (esAdmin || mia)) lista.set(t.cliente, { id: t.cliente, nombre: t.cliente_nombre, color: t.cliente_color })
     }
@@ -157,15 +178,32 @@ export default function Tareas() {
     for (const e of eventos.data ?? []) marcar(e.cliente ?? 'interno', diaDe(e.inicio), { key: `e${e.id}`, tipo: 'evento', color: e.color })
     for (const t of abiertas) if (t.fecha_limite) marcar(t.cliente ?? 'interno', t.fecha_limite, { key: `t${t.id}`, tipo: 'tarea', color: t.cliente_color || 'var(--gold)' })
 
-    const filtrando = filtro !== 'todas' || busqueda.trim()
+    const filtrando = filtro !== 'todas' || busqueda.trim() || porPersona || porEtiqueta || porPrioridad
     return [INTERNA, ...[...lista.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))]
+      .filter((c) => !clienteUrl || (clienteUrl === 'interno' ? c.id === null : c.id === clienteUrl))
       .map((c) => ({
         cliente: c,
-        tareas: abiertas.filter((t) => (t.cliente ?? null) === c.id).sort(ordenar),
+        tareas: listadas
+          .filter((t) => (t.cliente ?? null) === c.id)
+          .sort((a, b) => Number(a.estado === 'hecha') - Number(b.estado === 'hecha') || ordenar(a, b)),
         marcas: marcas[c.id ?? 'interno'] ?? {},
       }))
-      .filter((b) => !filtrando || b.tareas.length)
-  }, [filtradas, esAdmin, clientes, mios.data, me, eventos.data, filtro, busqueda])
+      .filter((b) => clienteUrl || !filtrando || b.tareas.length)
+  }, [filtradas, verHechas, esAdmin, clientes, mios.data, me, eventos.data, filtro, busqueda, porPersona, porEtiqueta, porPrioridad, clienteUrl])
+
+  const clienteFiltrado = clienteUrl === 'interno' ? INTERNA : clientes.find((c) => c.id === clienteUrl)
+  const quitarCliente = () => {
+    const p = new URLSearchParams(params)
+    p.delete('cliente')
+    setParams(p, { replace: true })
+  }
+  const alternarSeleccion = (t) =>
+    setSeleccion((s) => {
+      const n = new Set(s)
+      if (n.has(t.id)) n.delete(t.id)
+      else n.add(t.id)
+      return n
+    })
 
   const misClientes = new Set((mios.data ?? []).map((c) => c.id))
   const puedePlan = (c) => esAdmin || (puede(me, 'plan_tareas') && (c.id === null || misClientes.has(c.id)))
@@ -184,6 +222,9 @@ export default function Tareas() {
             Tablero
           </button>
         </div>
+        <button type="button" className={`btn btn-secondary btn-sm${seleccion ? ' active' : ''}`} onClick={() => setSeleccion((s) => (s ? null : new Set()))} aria-pressed={Boolean(seleccion)}>
+          {seleccion ? 'Terminar selección' : 'Seleccionar'}
+        </button>
         {esAdmin ? (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRecurrentes(true)}>
             ↻ Recurrentes
@@ -203,12 +244,55 @@ export default function Tareas() {
             </button>
           ))}
         </div>
+        <div className="tc-filtros-extra">
+          <select className="select-sm" value={porPersona} onChange={(e) => setPorPersona(e.target.value)} aria-label="Filtrar por responsable">
+            <option value="">Todos los responsables</option>
+            {personas
+              .filter((p) => p.activo)
+              .map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
+          </select>
+          <select className="select-sm" value={porEtiqueta} onChange={(e) => setPorEtiqueta(e.target.value)} aria-label="Filtrar por calendario">
+            <option value="">Todos los calendarios</option>
+            {etiquetas.map((e) => (
+              <option key={e.value} value={e.value}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+          <select className="select-sm" value={porPrioridad} onChange={(e) => setPorPrioridad(e.target.value)} aria-label="Filtrar por prioridad">
+            <option value="">Toda prioridad</option>
+            {PRIORIDADES.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          {vista === 'clientes' ? (
+            <label className="check-row small">
+              <input type="checkbox" checked={verHechas} onChange={(e) => setVerHechas(e.target.checked)} /> Ver hechas
+            </label>
+          ) : null}
+          {clienteFiltrado ? (
+            <button type="button" className="chip active" onClick={quitarCliente} aria-label="Ver todos los clientes">
+              <span className="cat-dot" style={{ background: clienteFiltrado.color || 'var(--gold)' }} /> {clienteFiltrado.nombre} ×
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <QueryState query={q}>
         {() =>
           vista === 'tablero' ? (
-            <TableroTareas tareas={filtradas} onAbrir={(t) => setTareaAbierta({ tarea: t })} onCambiarEstado={(t, estado) => cambiarEstado.mutate({ id: t.id, estado })} />
+            <TableroTareas
+              tareas={clienteUrl ? filtradas.filter((t) => (clienteUrl === 'interno' ? t.cliente === null : t.cliente === clienteUrl)) : filtradas}
+              onAbrir={(t) => (seleccion ? alternarSeleccion(t) : setTareaAbierta({ tarea: t }))}
+              onCambiarEstado={(t, estado) => cambiarEstado.mutate({ id: t.id, estado })}
+              seleccion={seleccion}
+            />
           ) : (
             <>
               {bloques.length > 1 ? (
@@ -242,6 +326,8 @@ export default function Tareas() {
                     tildadas={tildadas}
                     onMarcarHecha={marcarHecha}
                     onPlan={puedePlan(b.cliente) ? (c) => setPlan(c) : null}
+                    seleccion={seleccion}
+                    onSeleccionar={alternarSeleccion}
                   />
                 ))}
               </div>
@@ -249,6 +335,10 @@ export default function Tareas() {
           )
         }
       </QueryState>
+
+      {seleccion ? (
+        <LoteBar ids={[...seleccion]} personas={personas.filter((p) => p.activo)} esAdmin={esAdmin} onListo={() => setSeleccion(new Set())} onCancelar={() => setSeleccion(null)} />
+      ) : null}
 
       {recurrentes ? (
         <RecurrentesModal onClose={() => setRecurrentes(false)} />

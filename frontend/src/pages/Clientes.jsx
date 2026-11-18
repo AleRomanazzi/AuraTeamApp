@@ -38,8 +38,7 @@ export default function Clientes() {
 
   const activos = (q.data ?? []).filter((c) => c.estado === 'activo')
   const mrr = activos.reduce((a, c) => a + num(c.fee_mensual), 0)
-  const deuda = (q.data ?? []).reduce((a, c) => a + num(c.deuda), 0)
-  const vencida = (q.data ?? []).reduce((a, c) => a + num(c.deuda_vencida), 0)
+  const conDeuda = (q.data ?? []).filter((c) => num(c.deuda_vencida) > 0).length
 
   return (
     <>
@@ -55,8 +54,14 @@ export default function Clientes() {
         <div className="grid-4">
           <StatCard label="Clientes activos" value={activos.length} color="purple" />
           <StatCard label="Fee mensual recurrente" value={fmtCorto(mrr)} color="green" sub="Suma de contratos activos" />
-          <StatCard label="Deuda abierta" value={fmtCorto(deuda)} color="gold" onClick={() => navigate('/cobros?vista=deuda')} />
-          <StatCard label="Deuda vencida" value={<span className={vencida > 0 ? 'down' : ''}>{fmtCorto(vencida)}</span>} color="red" onClick={() => navigate('/cobros?vista=deuda')} />
+          <StatCard label="Fee promedio" value={fmtCorto(activos.length ? mrr / activos.length : 0)} color="gold" sub="Por cliente activo" />
+          <StatCard
+            label="Con pagos vencidos"
+            value={<span className={conDeuda ? 'down' : ''}>{conDeuda}</span>}
+            color="red"
+            sub={conDeuda ? 'Ver la deuda en Cobros' : 'Todos al día'}
+            onClick={() => navigate('/cobros?vista=deuda')}
+          />
         </div>
       ) : null}
 

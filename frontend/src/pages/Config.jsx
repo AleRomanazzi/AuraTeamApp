@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import CalendariosGoogle from '../components/config/CalendariosGoogle'
 import ConfigEnvios from '../components/config/ConfigEnvios'
+import PermisosRoles from '../components/config/PermisosRoles'
 import PlantillaOnboarding from '../components/config/PlantillaOnboarding'
+import PlantillasTarea from '../components/config/PlantillasTarea'
+import UsuarioForm from '../components/equipo/UsuarioForm'
 import Field from '../components/ui/Field'
-import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import QueryState from '../components/ui/QueryState'
 import Tabs from '../components/ui/Tabs'
 import Tag from '../components/ui/Tag'
 import { isSignedIn, signOutGoogle } from '../features/google/gapiClient'
 import { useGoogleStore } from '../features/google/googleStore'
-import { useCategorias, useMe, usePersonas } from '../hooks/useData'
+import { useCategorias, useMe } from '../hooks/useData'
 import { api, getList } from '../lib/api'
 import { COLORES, ROLES_EQUIPO, labelDe, nombreRoles } from '../lib/constants'
 import { formatFechaHora } from '../lib/format'
@@ -248,109 +250,6 @@ function Google({ me }) {
   )
 }
 
-function UsuarioForm({ inicial, onClose }) {
-  const qc = useQueryClient()
-  const { data: personas = [] } = usePersonas()
-  const [f, setF] = useState(() => ({
-    username: inicial?.username ?? '',
-    first_name: inicial?.first_name ?? '',
-    last_name: inicial?.last_name ?? '',
-    email: inicial?.email ?? '',
-    rol: inicial?.rol ?? 'equipo',
-    roles: inicial?.roles ?? [],
-    persona: inicial?.persona ?? '',
-    is_active: inicial?.is_active ?? true,
-    password: '',
-  }))
-  const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
-  const toggleRol = (r) => setF((s) => ({ ...s, roles: s.roles.includes(r) ? s.roles.filter((x) => x !== r) : [...s.roles, r] }))
-  const guardar = useMutation({
-    mutationFn: () => {
-      const body = { ...f, persona: f.persona || null }
-      if (!body.password) delete body.password
-      return inicial?.id ? api.put(`usuarios/${inicial.id}/`, body) : api.post('usuarios/', body)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QK.usuarios })
-      notify('Usuario guardado')
-      onClose()
-    },
-    onError: (e) => notifyError(e, 'No se pudo guardar el usuario'),
-  })
-  return (
-    <Modal
-      title={inicial?.id ? `Editar ${inicial.username}` : 'Nuevo usuario'}
-      onClose={onClose}
-      onSubmit={() => guardar.mutate()}
-      footer={
-        <>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>
-            Cancelar
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={guardar.isPending}>
-            Guardar
-          </button>
-        </>
-      }
-    >
-      <div className="grid-2 tight">
-        <Field label="Usuario">
-          <input value={f.username} onChange={set('username')} required autoComplete="off" />
-        </Field>
-        <Field label="Email">
-          <input type="email" value={f.email} onChange={set('email')} />
-        </Field>
-      </div>
-      <div className="grid-2 tight">
-        <Field label="Nombre">
-          <input value={f.first_name} onChange={set('first_name')} />
-        </Field>
-        <Field label="Apellido">
-          <input value={f.last_name} onChange={set('last_name')} />
-        </Field>
-      </div>
-      <div className="grid-2 tight">
-        <Field
-          label="Acceso"
-          hint={f.rol === 'admin' ? 'Ve y administra todo: finanzas, clientes, equipo y configuración.' : 'Mi panel, tareas, calendario, sus pagos y lo que sume cada rol.'}
-        >
-          <select value={f.rol} onChange={set('rol')}>
-            <option value="equipo">Equipo</option>
-            <option value="admin">Administrador</option>
-          </select>
-        </Field>
-        <Field label="Persona del equipo" hint="Necesario para que vea sus tareas y pagos">
-          <select value={f.persona ?? ''} onChange={set('persona')}>
-            <option value="">— Sin vincular —</option>
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      {f.rol === 'equipo' ? (
-        <Field label="Roles" hint={ROLES_EQUIPO.filter((r) => r.detalle && f.roles.includes(r.value)).map((r) => r.detalle).join(' ') || 'Podés combinar varios, por ejemplo Fotografía + Diseño.'}>
-          <div className="chip-select">
-            {ROLES_EQUIPO.map((r) => (
-              <button key={r.value} type="button" className={`chip${f.roles.includes(r.value) ? ' active' : ''}`} onClick={() => toggleRol(r.value)} aria-pressed={f.roles.includes(r.value)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
-        </Field>
-      ) : null}
-      <Field label={inicial?.id ? 'Nueva contraseña (dejar vacío para no cambiarla)' : 'Contraseña'}>
-        <input type="password" autoComplete="new-password" value={f.password} onChange={set('password')} required={!inicial?.id} minLength={8} />
-      </Field>
-      <label className="check-row">
-        <input type="checkbox" checked={f.is_active} onChange={(e) => setF((s) => ({ ...s, is_active: e.target.checked }))} /> Activo
-      </label>
-    </Modal>
-  )
-}
-
 function Usuarios({ me }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: QK.usuarios, queryFn: () => getList('usuarios/') })
@@ -373,6 +272,9 @@ function Usuarios({ me }) {
           + Usuario
         </button>
       </div>
+      <p className="muted small">
+        Para sumar a alguien al equipo, creá la persona en <Link to="/equipo">Equipo</Link>: ahí mismo le das acceso al panel.
+      </p>
       <QueryState query={q}>
         {(lista) => (
           <div className="table-responsive tabla-apilada">
@@ -642,6 +544,8 @@ export default function Config() {
     ...(me.es_admin
       ? [
           { value: 'usuarios', label: 'Usuarios' },
+          { value: 'permisos', label: 'Permisos' },
+          { value: 'plantillas', label: 'Plantillas de tarea' },
           { value: 'categorias', label: 'Categorías' },
           { value: 'onboarding', label: 'Onboarding' },
           { value: 'emails', label: 'Emails a clientes' },
@@ -660,6 +564,8 @@ export default function Config() {
       {actual === 'google' ? <Google key={me.id} me={me} /> : null}
       {actual === 'google' && me.es_admin ? <CalendariosGoogle /> : null}
       {actual === 'usuarios' ? <Usuarios me={me} /> : null}
+      {actual === 'permisos' ? <PermisosRoles /> : null}
+      {actual === 'plantillas' ? <PlantillasTarea /> : null}
       {actual === 'categorias' ? <Categorias /> : null}
       {actual === 'onboarding' ? <PlantillaOnboarding /> : null}
       {actual === 'emails' ? <ConfigEnvios /> : null}

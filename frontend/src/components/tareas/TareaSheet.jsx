@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Field from '../ui/Field'
 import Modal from '../ui/Modal'
 import ProgressBar from '../ui/ProgressBar'
+import TareaHistorial from './TareaHistorial'
 import { opcionesEtiqueta, useClientes, useEtiquetas, useMe, usePersonas } from '../../hooks/useData'
 import { api, getList } from '../../lib/api'
 import { ESTADOS_TAREA, GESTION_INTERNA, PRIORIDADES } from '../../lib/constants'
-import { formatFechaCorta } from '../../lib/format'
+import { formatFechaCorta, sumarDias, todayISO } from '../../lib/format'
 import { notify, notifyError } from '../../lib/notify'
 import { QK, TAREAS, invalidar } from '../../lib/queryKeys'
 import { confirmar } from '../../store/confirmStore'
@@ -50,6 +51,21 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
     subtareas: (tarea?.subtareas ?? []).map((s) => ({ ...s, key: s.id })),
   }))
   const todas = useQuery({ queryKey: QK.tareas({}), queryFn: () => getList('tareas/') })
+  const plantillas = useQuery({ queryKey: QK.plantillas, queryFn: () => getList('plantillas-tarea/'), enabled: nueva, staleTime: 60_000 })
+  const usarPlantilla = (id) => {
+    const p = (plantillas.data ?? []).find((x) => x.id === Number(id))
+    if (!p) return
+    setF((s) => ({
+      ...s,
+      titulo: p.titulo || s.titulo,
+      descripcion: p.descripcion || s.descripcion,
+      etiqueta: p.etiqueta || s.etiqueta,
+      prioridad: p.prioridad,
+      asignados: p.personas.length ? p.personas : s.asignados,
+      fecha_limite: p.dias_plazo !== null ? sumarDias(todayISO(), p.dias_plazo) : s.fecha_limite,
+      subtareas: [...s.subtareas, ...p.subtareas.map((titulo, i) => ({ key: `pl-${p.id}-${i}`, titulo, hecha: false }))],
+    }))
+  }
   const porId = useMemo(() => {
     const m = new Map((tarea?.dependencias ?? []).map((d) => [d.id, d]))
     for (const t of todas.data ?? []) m.set(t.id, t)
@@ -197,6 +213,16 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
               ))}
           </select>
           {tarea?.recurrente ? <span className="tarea-sheet-sync">↻ Recurrente</span> : null}
+          {nueva && plantillas.data?.length ? (
+            <select className="select-sm tarea-sheet-plantilla" value="" onChange={(e) => usarPlantilla(e.target.value)} aria-label="Usar una plantilla">
+              <option value="">Usar plantilla…</option>
+              {plantillas.data.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
+            </select>
+          ) : null}
         </div>
         <input className="tarea-sheet-titulo" value={f.titulo} onChange={set('titulo')} required maxLength={200} placeholder="Título de la tarea" aria-label="Título" />
 
@@ -416,6 +442,7 @@ export default function TareaSheet({ tarea, cliente, onClose }) {
           </div>
         ) : null}
       </fieldset>
+      {!nueva ? <TareaHistorial tareaId={tarea.id} esAdmin={esAdmin} /> : null}
     </Modal>
   )
 }

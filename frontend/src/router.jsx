@@ -7,6 +7,7 @@ import PageShell from './components/layout/PageShell'
 import ErrorPage from './pages/ErrorPage'
 import Inicio from './pages/Inicio'
 import Login from './pages/Login'
+import MiPanel from './pages/MiPanel'
 
 const Calendario = lazy(() => import('./pages/Calendario'))
 const ClienteDetalle = lazy(() => import('./pages/ClienteDetalle'))
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     children: [
       { index: true, element: <Inicio /> },
+      { path: 'mi-panel', element: <MiPanel /> },
       { path: 'tareas', element: <Tareas /> },
       { path: 'calendario', element: <Calendario /> },
       { path: 'config', element: <Config /> },

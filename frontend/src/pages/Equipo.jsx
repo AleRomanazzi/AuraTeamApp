@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import AsignacionForm from '../components/equipo/AsignacionForm'
+import UsuarioForm from '../components/equipo/UsuarioForm'
 import Field from '../components/ui/Field'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
@@ -8,14 +9,21 @@ import QueryState from '../components/ui/QueryState'
 import Tag from '../components/ui/Tag'
 import { usePersonas } from '../hooks/useData'
 import { api } from '../lib/api'
-import { COLORES, TIPOS_VINCULO, labelDe } from '../lib/constants'
+import { COLORES, ROLES_EQUIPO, TIPOS_VINCULO, labelDe } from '../lib/constants'
 import { TIPOS_CONTACTO, contactosAObjeto, linkContacto, objetoAContactos } from '../lib/contactos'
 import { iniciales } from '../lib/format'
 import { notify, notifyError } from '../lib/notify'
 import { confirmar } from '../store/confirmStore'
 
+const ACCESO_VACIO = { dar: false, username: '', email: '', password: '', rol: 'equipo', roles: [] }
+
 function PersonaForm({ inicial, onClose }) {
   const qc = useQueryClient()
+  const nueva = !inicial?.id
+  // Al crear, la persona puede salir ya con acceso al panel (usuario vinculado): un solo alta.
+  const [acceso, setAcceso] = useState(ACCESO_VACIO)
+  const setA = (k) => (e) => setAcceso((s) => ({ ...s, [k]: e.target.value }))
+  const toggleRol = (r) => setAcceso((s) => ({ ...s, roles: s.roles.includes(r) ? s.roles.filter((x) => x !== r) : [...s.roles, r] }))
   const [f, setF] = useState(() => ({
     nombre: inicial?.nombre ?? '',
     rol: inicial?.rol ?? '',
@@ -42,14 +50,34 @@ function PersonaForm({ inicial, onClose }) {
         notas: f.notas,
         contactos: objetoAContactos(f),
       }
-      return inicial?.id ? api.put(`personal/${inicial.id}/`, body) : api.post('personal/', body)
+      if (!nueva) return api.put(`personal/${inicial.id}/`, body)
+      return api.post('personal/', body).then(async (r) => {
+        if (!acceso.dar) return r
+        const { username, email, password, rol, roles } = acceso
+        try {
+          await api.post('usuarios/', { username, email, password, rol, roles, first_name: f.nombre, persona: r.data.id, is_active: true })
+        } catch (e) {
+          e.personaCreada = true
+          throw e
+        }
+        return r
+      })
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['personal'] })
-      notify(inicial?.id ? 'Persona actualizada' : 'Persona agregada')
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      notify(inicial?.id ? 'Persona actualizada' : acceso.dar ? 'Persona agregada con acceso al panel' : 'Persona agregada')
       onClose()
     },
-    onError: (e) => notifyError(e, 'No se pudo guardar'),
+    onError: (e) => {
+      if (e.personaCreada) {
+        qc.invalidateQueries({ queryKey: ['personal'] })
+        notifyError(e, 'La persona se creó, pero no el acceso al panel (podés dárselo desde su tarjeta)')
+        onClose()
+        return
+      }
+      notifyError(e, 'No se pudo guardar')
+    },
   })
 
   return (
@@ -73,7 +101,7 @@ function PersonaForm({ inicial, onClose }) {
         <Field label="Nombre">
           <input value={f.nombre} onChange={set('nombre')} required maxLength={120} />
         </Field>
-        <Field label="Puesto">
+        <Field label="Puesto" hint="Descriptivo. Lo que ve en el panel depende de sus roles de acceso.">
           <input value={f.rol} onChange={set('rol')} maxLength={120} placeholder="Diseñadora, CM, editor…" />
         </Field>
       </div>
@@ -114,6 +142,45 @@ function PersonaForm({ inicial, onClose }) {
       <label className="check-row">
         <input type="checkbox" checked={f.activo} onChange={(e) => setF((s) => ({ ...s, activo: e.target.checked }))} /> Activa
       </label>
+      {nueva ? (
+        <div className="acceso-box">
+          <label className="check-row">
+            <input type="checkbox" checked={acceso.dar} onChange={(e) => setAcceso((s) => ({ ...s, dar: e.target.checked }))} /> Darle acceso al panel
+          </label>
+          {acceso.dar ? (
+            <>
+              <div className="grid-3 tight">
+                <Field label="Usuario">
+                  <input value={acceso.username} onChange={setA('username')} required autoComplete="off" />
+                </Field>
+                <Field label="Email" hint="Para avisos y recuperar acceso.">
+                  <input type="email" value={acceso.email} onChange={setA('email')} />
+                </Field>
+                <Field label="Contraseña">
+                  <input type="password" autoComplete="new-password" value={acceso.password} onChange={setA('password')} required minLength={8} />
+                </Field>
+              </div>
+              <Field label="Acceso">
+                <select value={acceso.rol} onChange={setA('rol')}>
+                  <option value="equipo">Equipo</option>
+                  <option value="admin">Administrador (ve y administra todo)</option>
+                </select>
+              </Field>
+              {acceso.rol === 'equipo' ? (
+                <Field label="Roles" hint="Lo que suma cada rol se define en Configuración → Permisos.">
+                  <div className="chip-select">
+                    {ROLES_EQUIPO.map((r) => (
+                      <button key={r.value} type="button" className={`chip${acceso.roles.includes(r.value) ? ' active' : ''}`} onClick={() => toggleRol(r.value)} aria-pressed={acceso.roles.includes(r.value)}>
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </Modal>
   )
 }
@@ -123,6 +190,7 @@ export default function Equipo() {
   const q = usePersonas()
   const [editando, setEditando] = useState(null)
   const [asignando, setAsignando] = useState(null)
+  const [dandoAcceso, setDandoAcceso] = useState(null)
   const [verInactivos, setVerInactivos] = useState(false)
 
   const borrar = useMutation({
@@ -165,7 +233,23 @@ export default function Equipo() {
                   {!p.activo ? <Tag>Inactiva</Tag> : null}
                 </div>
                 {p.alias_cbu ? <div className="small muted mono">Alias: {p.alias_cbu}</div> : null}
-                {p.usuario ? <div className="small muted">Usuario: {p.usuario}</div> : null}
+                <div className="staff-acceso small">
+                  {p.usuario ? (
+                    <>
+                      <span className={p.usuario.is_active ? '' : 'down'}>
+                        Acceso: {p.usuario.username}
+                        {p.usuario.is_active ? '' : ' (desactivado)'}
+                      </span>
+                      {p.usuario.rol === 'admin' ? (
+                        <Tag color="purple">Admin</Tag>
+                      ) : (
+                        p.usuario.roles.map((r) => <Tag key={r}>{labelDe(ROLES_EQUIPO, r)}</Tag>)
+                      )}
+                    </>
+                  ) : (
+                    <span className="muted">Sin acceso al panel</span>
+                  )}
+                </div>
                 <div className="staff-section">
                   <div className="staff-section-title">Cuentas</div>
                   {p.clientes.length ? (
@@ -200,6 +284,9 @@ export default function Equipo() {
                   <button type="button" className="btn btn-secondary btn-xs" onClick={() => setEditando(p)}>
                     Editar
                   </button>
+                  <button type="button" className="btn btn-secondary btn-xs" onClick={() => setDandoAcceso(p)}>
+                    {p.usuario ? 'Acceso' : 'Dar acceso'}
+                  </button>
                   <button
                     type="button"
                     className="btn btn-danger btn-xs"
@@ -222,6 +309,7 @@ export default function Equipo() {
         </div>
       </QueryState>
       {editando ? <PersonaForm inicial={editando.id ? editando : null} onClose={() => setEditando(null)} /> : null}
+      {dandoAcceso ? <UsuarioForm inicial={dandoAcceso.usuario} personaFija={dandoAcceso} onClose={() => setDandoAcceso(null)} /> : null}
       {asignando ? <AsignacionForm personaId={asignando.id} onClose={() => setAsignando(null)} /> : null}
     </>
   )

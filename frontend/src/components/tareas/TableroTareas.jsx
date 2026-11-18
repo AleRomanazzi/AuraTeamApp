@@ -7,7 +7,7 @@ const ORDEN_PRIORIDAD = { alta: 0, media: 1, baja: 2 }
 const AVANCE = ['en_curso', 'en_revision', 'hecha']
 
 /** Vista por estado (kanban). */
-export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
+export default function TableroTareas({ tareas, onAbrir, onCambiarEstado, seleccion }) {
   const [vista, setVista] = useState('pendiente')
   const columnas = useMemo(
     () =>
@@ -42,8 +42,14 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
             </div>
             {col.tareas.length === 0 ? <div className="board-empty">Sin tareas</div> : null}
             {col.tareas.map((t) => (
-              <div key={t.id} className={`task-card task-card--click${t.vencida ? ' task-card--late' : ''}`}>
-                <button type="button" className="task-card-open" onClick={() => onAbrir(t)} aria-label={`Abrir «${t.titulo}»`} />
+              <div key={t.id} className={`task-card task-card--click${t.vencida ? ' task-card--late' : ''}${seleccion?.has(t.id) ? ' task-card--elegida' : ''}`}>
+                <button
+                  type="button"
+                  className="task-card-open"
+                  onClick={() => onAbrir(t)}
+                  aria-label={seleccion ? `Seleccionar «${t.titulo}»` : `Abrir «${t.titulo}»`}
+                  aria-pressed={seleccion ? seleccion.has(t.id) : undefined}
+                />
                 <div className="task-card-top">
                   <span className="task-card-cliente" title={t.cliente_nombre || GESTION_INTERNA}>
                     <span className="cat-dot" style={{ background: t.cliente_nombre ? t.cliente_color : 'var(--gold)' }} />
@@ -60,7 +66,7 @@ export default function TableroTareas({ tareas, onAbrir, onCambiarEstado }) {
                   {t.asignados_nombres.length ? <span>👤 {t.asignados_nombres.join(', ')}</span> : null}
                   {t.links?.length ? <span>🔗 {t.links.length}</span> : null}
                 </div>
-                {t.puede_editar ? (
+                {t.puede_editar && !seleccion ? (
                   <div className="task-card-actions">
                     <select className="select-sm" aria-label="Cambiar estado" value={t.estado} onChange={(e) => onCambiarEstado(t, e.target.value)}>
                       {ESTADOS_TAREA.map((s) => (

@@ -4,7 +4,13 @@ import { puede, useMe } from '../../hooks/useData'
 import { nombreRoles } from '../../lib/constants'
 
 const NAV_ADMIN = [
-  { section: 'Principal', items: [{ to: '/', icon: '📊', label: 'Dashboard' }] },
+  {
+    section: 'Principal',
+    items: [
+      { to: '/', icon: '📊', label: 'Dashboard' },
+      { to: '/mi-panel', icon: '🏠', label: 'Mi panel' },
+    ],
+  },
   {
     section: 'Clientes',
     items: [

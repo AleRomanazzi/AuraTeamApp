@@ -210,7 +210,7 @@ class MiPanelView(APIView):
             tareas = (
                 Tarea.objects.filter(asignaciones__persona=persona)
                 .exclude(estado='hecha')
-                .exclude(etiqueta__in=privadas())
+                .exclude(etiqueta__in=[] if request.user.es_admin else privadas())
                 .select_related('cliente')
                 .prefetch_related('asignaciones__persona', 'subtareas')
                 .distinct()

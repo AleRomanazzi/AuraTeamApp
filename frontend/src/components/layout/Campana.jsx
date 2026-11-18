@@ -9,6 +9,7 @@ const ICONOS = {
   tarea_estado: '👀',
   tarea_hecha: '✅',
   tarea_disponible: '🔓',
+  tarea_comentario: '💬',
   deadline_manana: '⏰',
   deadline_hoy: '⏰',
   tarea_vencida: '⚠️',

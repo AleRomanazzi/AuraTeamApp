@@ -26,7 +26,7 @@ export default function MiPanel() {
       <QueryState query={q}>
         {(d) =>
           !d.persona ? (
-            <div className="info-box">Tu usuario todavía no está vinculado a una persona del equipo. Pedile a un administrador que lo vincule en Configuración → Usuarios.</div>
+            <div className="info-box">Tu usuario todavía no está vinculado a una persona del equipo. Se vincula desde Equipo → «Acceso» en la tarjeta de la persona.</div>
           ) : (
             <div className="grid-2">
               <div className="card">

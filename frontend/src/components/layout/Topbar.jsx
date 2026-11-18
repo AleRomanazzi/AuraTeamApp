@@ -10,7 +10,7 @@ import { cerrarSesion } from '../../lib/session'
 
 const hoy = new Date().toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })
 
-export default function Topbar({ onToggleSidebar }) {
+export default function Topbar({ onToggleSidebar, onBuscar }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { data: me } = useMe()
@@ -35,6 +35,11 @@ export default function Topbar({ onToggleSidebar }) {
         <img src={AURA_LOGO} alt="" />
         <span>AuraTeam</span>
       </Link>
+      <button type="button" className="topbar-buscar" onClick={onBuscar} aria-label="Buscar (Cmd+K)">
+        <span aria-hidden>⌕</span>
+        <span className="solo-escritorio">Buscar…</span>
+        <kbd className="solo-escritorio">⌘K</kbd>
+      </button>
       <div className="topbar-right">
         <span className="badge solo-escritorio">{hoy}</span>
         {me?.es_admin && me?.google_conectado ? (

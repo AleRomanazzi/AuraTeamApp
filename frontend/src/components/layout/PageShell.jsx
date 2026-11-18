@@ -5,6 +5,7 @@ import { conectarGoogle } from '../../features/google/gapiClient'
 import { useMe } from '../../hooks/useData'
 import { QK } from '../../lib/queryKeys'
 import ConfirmDialog from '../ui/ConfirmDialog'
+import BuscadorGlobal from './BuscadorGlobal'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 
@@ -31,7 +32,19 @@ function useGoogleAutoConnect(me) {
 export default function PageShell() {
   const meQ = useMe()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [buscando, setBuscando] = useState(false)
   useGoogleAutoConnect(meQ.data)
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setBuscando((v) => !v)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
 
   const toggleSidebar = useCallback(() => setSidebarOpen((v) => !v), [])
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
@@ -52,7 +65,7 @@ export default function PageShell() {
       <div id="sidebar-overlay" className={sidebarOpen ? 'open' : ''} onClick={closeSidebar} role="presentation" aria-hidden="true" />
       <Sidebar sidebarOpen={sidebarOpen} onClose={closeSidebar} />
       <div id="main">
-        <Topbar onToggleSidebar={toggleSidebar} />
+        <Topbar onToggleSidebar={toggleSidebar} onBuscar={() => setBuscando(true)} />
         <main className="page active">
           {meQ.isPending ? (
             <div className="state-box">Cargando…</div>
@@ -70,6 +83,7 @@ export default function PageShell() {
           )}
         </main>
       </div>
+      {buscando && meQ.data ? <BuscadorGlobal abierto onCerrar={() => setBuscando(false)} /> : null}
       <ConfirmDialog />
     </>
   )

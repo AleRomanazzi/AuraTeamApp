@@ -34,8 +34,10 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
 - **Backend** (`backend/`): Django 6 + DRF + simplejwt. Apps en `backend/apps/`:
  - `accounts`: usuarios con acceso `admin` / `equipo` (vinculados a una `Persona`), JWT, y la cuenta de Google fija de
  la agencia (`google.py`: refresh token cifrado, entrega access tokens en `/api/auth/google/token/`). Los de equipo
- tienen uno o varios `roles` (CM, editor, diseño, foto, colaborador); las secciones extra de cada rol están en
- `PERMISOS_POR_ROL` (`accounts/models.py`) y se chequean con `requiere_permiso` / `tiene_permiso` (`core/permissions.py`).
+ tienen uno o varios `roles` (CM, editor, diseño, foto, colaborador); las secciones extra de cada rol se editan en
+ Configuración → Permisos (`ConfigPermisos`, `/api/auth/permisos/`; `PERMISOS_POR_ROL` son los valores de fábrica) y se
+ chequean con `requiere_permiso` / `tiene_permiso` (`core/permissions.py`). El alta de una persona con acceso al panel
+ se hace desde Equipo (persona + usuario vinculado).
  Todo el equipo ve todas las tareas y edita las suyas; las sin cliente son «AuraTeam - Gestión Interna» (no es un
  cliente) y las edita cualquiera (`es_interna`, salvo las de pagos de servicios). Los eventos del calendario solo los
  edita quien los creó.
@@ -65,6 +67,10 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
     `hora_fin` (también en `TareaRecurrente`); van como evento con hora en Google.
     Mover o estirar en Google el evento de una tarea le cambia
     fecha y horario en el panel (`aplicar_movimiento_tarea`), salvo que el panel tenga cambios sin subir.
+    Comentarios e historial de cambios por tarea (`ComentarioTarea`, `ActividadTarea`, `equipo/actividad.py`;
+    `GET /api/tareas/{id}/historial/`, comentar avisa a responsables, creador y quienes comentaron). Cambios en lote
+    (`POST /api/tareas/lote/`, mismos permisos y efectos que de a una). Plantillas de tarea (`PlantillaTarea`,
+    Configuración → Plantillas) que completan el formulario de una tarea nueva.
     «Equipo hoy» (`seguimiento.py`, `GET /api/equipo/seguimiento/`, solo admins): vencidas, de hoy, próximas,
     en revisión y % de cumplimiento en fecha (7 y 30 días) por persona.
   - `finanzas`: transacciones (ingresos/egresos) y categorías. Flujo de caja proyectado (`proyeccion.py`,
@@ -96,6 +102,7 @@ Contexto para agentes de IA (Cursor, Claude Code) que trabajan en este repo. Res
   - `QueryState` recibe un único hijo función.
   - Lint con reglas de react-hooks v7: nada de `setState` sincrónico dentro de efectos.
   - Etiquetas de eventos/tareas con `useEtiquetas()` (`GET /api/calendario/etiquetas/`), no constantes.
+  - Buscador global con Cmd+K (`components/layout/BuscadorGlobal.jsx`). Tareas acepta `?tarea=ID` y `?cliente=ID`.
   - Gmail/Calendar usan gapi con el token que entrega el backend (`src/features/google/gapiClient.js`).
 
 ## Comandos

@@ -24,6 +24,7 @@ from apps.equipo.views import (
     LiquidacionViewSet,
     PersonaViewSet,
     SeguimientoView,
+    PlantillaTareaViewSet,
     TareaRecurrenteViewSet,
     TareaViewSet,
 )
@@ -45,6 +46,7 @@ router.register('onboarding-pasos', PasoOnboardingViewSet, basename='paso-onboar
 router.register('envios', EnvioClienteViewSet, basename='envio')
 router.register('servicios', ServicioViewSet, basename='servicio')
 router.register('personal', PersonaViewSet, basename='persona')
+router.register('plantillas-tarea', PlantillaTareaViewSet, basename='plantilla-tarea')
 router.register('tareas-recurrentes', TareaRecurrenteViewSet, basename='tarea-recurrente')
 router.register('tareas', TareaViewSet, basename='tarea')
 router.register('asignaciones-cliente', AsignacionClienteViewSet, basename='asignacion-cliente')

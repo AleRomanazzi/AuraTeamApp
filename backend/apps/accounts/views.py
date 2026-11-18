@@ -15,6 +15,7 @@ from apps.core.permissions import IsAdmin
 from apps.integraciones import drive
 
 from . import google
+from .models import PERMISOS, ROLES_EQUIPO, ConfigPermisos, permisos_por_rol
 from .serializers import CambiarPasswordSerializer, MeSerializer, UsuarioSerializer
 
 User = get_user_model()
@@ -141,3 +142,33 @@ class UsuarioViewSet(viewsets.ModelViewSet):
         user.is_active = False
         user.save(update_fields=['is_active'])
         return Response({'detail': 'Usuario desactivado.'}, status=status.HTTP_200_OK)
+
+
+class PermisosView(APIView):
+    """Qué secciones extra habilita cada rol del equipo (los admins ven todo)."""
+
+    permission_classes = [IsAdmin]
+
+    def _respuesta(self):
+        por_rol = permisos_por_rol()
+        return Response({
+            'roles': [{'value': v, 'label': l} for v, l in ROLES_EQUIPO],
+            'permisos': [{'value': v, 'label': l} for v, l in PERMISOS],
+            'por_rol': {r: sorted(por_rol.get(r, set())) for r, _ in ROLES_EQUIPO},
+        })
+
+    def get(self, request):
+        return self._respuesta()
+
+    def put(self, request):
+        datos = request.data.get('por_rol')
+        roles, validos = dict(ROLES_EQUIPO), {v for v, _ in PERMISOS}
+        if not isinstance(datos, dict) or any(r not in roles for r in datos):
+            return Response({'por_rol': 'Roles inválidos.'}, status=status.HTTP_400_BAD_REQUEST)
+        limpio = {}
+        for rol, permisos in datos.items():
+            if not isinstance(permisos, list) or any(p not in validos for p in permisos):
+                return Response({'por_rol': f'Permisos inválidos para {roles[rol]}.'}, status=status.HTTP_400_BAD_REQUEST)
+            limpio[rol] = sorted(set(permisos))
+        ConfigPermisos(por_rol=limpio).save()
+        return self._respuesta()

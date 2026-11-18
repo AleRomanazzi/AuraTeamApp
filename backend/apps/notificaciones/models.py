@@ -6,6 +6,7 @@ TIPOS = [
     ('tarea_estado', 'Cambio de estado de una tarea'),
     ('tarea_hecha', 'Tarea terminada'),
     ('tarea_disponible', 'Tarea desbloqueada'),
+    ('tarea_comentario', 'Comentario en una tarea'),
     ('deadline_manana', 'Vence mañana'),
     ('deadline_hoy', 'Vence hoy'),
     ('tarea_vencida', 'Tarea vencida'),

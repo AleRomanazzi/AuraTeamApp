@@ -16,8 +16,8 @@ from apps.calendario import etiquetas, google_calendar
 from apps.notificaciones import services as avisos
 from apps.servicios.services import al_completar_tarea as servicios_al_completar
 
-from . import dependencias, services
-from .models import AsignacionCliente, AsignacionTarea, Liquidacion, Persona, Tarea, TareaRecurrente
+from . import actividad, dependencias, services
+from .models import AsignacionCliente, AsignacionTarea, ComentarioTarea, Liquidacion, Persona, PlantillaTarea, Tarea, TareaRecurrente
 from .serializers import (
     AsignacionClienteSerializer,
     LiquidacionSerializer,
@@ -25,6 +25,7 @@ from .serializers import (
     PersonaBasicaSerializer,
     PersonaSerializer,
     PlanDelMesSerializer,
+    PlantillaTareaSerializer,
     RepartirSerializer,
     TareaRecurrenteSerializer,
     TareaSerializer,
@@ -35,6 +36,36 @@ from .serializers import (
 GESTION_INTERNA = 'AuraTeam - Gestión Interna'
 
 logger = logging.getLogger(__name__)
+
+
+def _nombre(user):
+    if user is None:
+        return 'Alguien'
+    if user.persona_id:
+        return user.persona.nombre
+    return (user.nombre_display if user.nombre_display not in ('', 'Yo') else '') or user.first_name or user.username
+
+
+def _texto_error(detalle) -> str:
+    if isinstance(detalle, dict):
+        return ' '.join(_texto_error(v) for v in detalle.values())
+    if isinstance(detalle, list):
+        return ' '.join(_texto_error(v) for v in detalle)
+    return str(detalle)
+
+
+class PlantillaTareaViewSet(viewsets.ModelViewSet):
+    """Moldes para crear tareas: los ve todo el equipo (las de etiquetas privadas, solo admins); los editan los admins."""
+
+    serializer_class = PlantillaTareaSerializer
+    permission_classes = [IsAdminOrReadOnly]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = PlantillaTarea.objects.prefetch_related('personas')
+        if not es_admin(self.request.user):
+            qs = qs.exclude(etiqueta__in=etiquetas.privadas())
+        return qs
 
 
 class PersonaViewSet(viewsets.ModelViewSet):
@@ -77,10 +108,13 @@ class TareaPermission(permissions.BasePermission):
             return False
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
             return True
-        return view.action in ('create', 'update', 'partial_update', 'plan', 'subtarea')
+        return view.action in ('create', 'update', 'partial_update', 'plan', 'subtarea', 'lote', 'comentarios', 'comentario')
 
     def has_object_permission(self, request, view, obj):
         if es_admin(request.user) or request.method in permissions.SAFE_METHODS:
+            return True
+        if view.action in ('comentarios', 'comentario'):
+            # Comentar puede cualquiera que la ve; borrar un comentario se chequea en la acción (solo su autor).
             return True
         return puede_editar_tarea(request.user, obj)
 
@@ -135,6 +169,7 @@ class TareaViewSet(viewsets.ModelViewSet):
         persona = persona_de(user)
         if not es_admin(user) and persona is not None and not tarea.asignaciones.exists():
             AsignacionTarea.objects.create(persona=persona, tarea=tarea)
+        actividad.registrar(tarea, 'Creó la tarea', user)
         google_calendar.al_guardar_tarea(tarea)
         avisos.al_asignar(tarea, list(tarea.asignaciones.values_list('persona_id', flat=True)), user)
         if tarea.estado == 'hecha':
@@ -150,10 +185,11 @@ class TareaViewSet(viewsets.ModelViewSet):
             actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
             if {p.id for p in nuevos} != actuales:
                 raise PermissionDenied('Solo quien creó la tarea o un administrador puede cambiar los responsables.')
-        antes = set(tarea.asignaciones.values_list('persona_id', flat=True))
+        foto = actividad.foto(tarea)
         estado_anterior = tarea.estado
         tarea = serializer.save()
-        self._efectos(tarea, estado_anterior, user, antes)
+        actividad.registrar_cambios(tarea, foto, user)
+        self._efectos(tarea, estado_anterior, user, foto['asignados'])
 
     @action(detail=True, methods=['patch'], url_path=r'subtareas/(?P<sub_id>[0-9]+)')
     def subtarea(self, request, pk=None, sub_id=None):
@@ -173,8 +209,11 @@ class TareaViewSet(viewsets.ModelViewSet):
         if sub.hecha != hecha:
             sub.hecha = hecha
             sub.save(update_fields=['hecha'])
+            actividad.registrar(tarea, f'{"Tildó" if hecha else "Destildó"} «{sub.titulo}»', request.user)
             tarea._checklist_tocado = True
             services.fijar_estado(tarea, services.estado_segun_subtareas(tarea, tarea.estado))
+            if tarea.estado != estado_anterior:
+                actividad.registrar(tarea, f'Pasó a {actividad.ESTADOS.get(tarea.estado, tarea.estado)} por el checklist', request.user)
             self._efectos(tarea, estado_anterior, request.user)
         if hasattr(tarea, '_prefetched_objects_cache'):
             tarea._prefetched_objects_cache.clear()
@@ -196,6 +235,84 @@ class TareaViewSet(viewsets.ModelViewSet):
         creadas = serializer.save()
         avisos.asignadas_en_tanda(creadas, f'de {cliente.nombre if cliente else GESTION_INTERNA} (plan del mes)', user, email=True)
         return Response({'creadas': len(creadas)}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def historial(self, request, pk=None):
+        """Comentarios y cambios de la tarea, del más viejo al más nuevo."""
+        tarea = self.get_object()
+        items = [
+            {'tipo': 'comentario', 'id': c.id, 'texto': c.texto, 'creado': c.creado, 'autor': _nombre(c.autor),
+             'propio': c.autor_id == request.user.id}
+            for c in tarea.comentarios.select_related('autor')
+        ] + [
+            {'tipo': 'cambio', 'id': a.id, 'texto': a.texto, 'creado': a.creado, 'autor': _nombre(a.usuario) if a.usuario_id else 'Sistema'}
+            for a in tarea.actividad.select_related('usuario')
+        ]
+        items.sort(key=lambda i: i['creado'])
+        return Response(items)
+
+    @action(detail=True, methods=['post'])
+    def comentarios(self, request, pk=None):
+        tarea = self.get_object()
+        texto = str(request.data.get('texto', '')).strip()
+        if not texto:
+            return Response({'texto': 'Escribí el comentario.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(texto) > 4000:
+            return Response({'texto': 'Máximo 4000 caracteres.'}, status=status.HTTP_400_BAD_REQUEST)
+        c = ComentarioTarea.objects.create(tarea=tarea, autor=request.user, texto=texto)
+        avisos.al_comentar(tarea, c, request.user)
+        return Response({'id': c.id}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'comentarios/(?P<com_id>[0-9]+)')
+    def comentario(self, request, pk=None, com_id=None):
+        tarea = self.get_object()
+        c = tarea.comentarios.filter(pk=com_id).first()
+        if c is None:
+            return Response({'detail': 'Ese comentario no existe.'}, status=status.HTTP_404_NOT_FOUND)
+        if c.autor_id != request.user.id and not es_admin(request.user):
+            raise PermissionDenied('Solo quien lo escribió puede borrarlo.')
+        c.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'])
+    def lote(self, request):
+        """Aplica los mismos cambios a varias tareas. Las que no se pueden tocar vuelven en `errores`."""
+        ids = request.data.get('ids')
+        if not isinstance(ids, list) or not ids or len(ids) > 200:
+            return Response({'ids': 'Elegí entre 1 y 200 tareas.'}, status=status.HTTP_400_BAD_REQUEST)
+        cambios = request.data.get('cambios') or {}
+        borrar = request.data.get('borrar') is True
+        if not isinstance(cambios, dict) or (not borrar and not cambios):
+            return Response({'cambios': 'Indicá qué cambiar.'}, status=status.HTTP_400_BAD_REQUEST)
+        if borrar and not es_admin(request.user):
+            raise PermissionDenied('Solo un administrador puede borrar tareas.')
+        permitidos = {'estado', 'fecha_limite', 'prioridad', 'etiqueta', 'agregar', 'quitar'}
+        if set(cambios) - permitidos:
+            return Response({'cambios': f'Campos no permitidos: {", ".join(sorted(set(cambios) - permitidos))}.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        agregar = {int(x) for x in cambios.get('agregar') or []}
+        quitar = {int(x) for x in cambios.get('quitar') or []}
+        datos = {k: v for k, v in cambios.items() if k not in ('agregar', 'quitar')}
+        hechas, errores = 0, []
+        for tarea in self.get_queryset().filter(pk__in=ids):
+            try:
+                self.check_object_permissions(request, tarea)
+                if borrar:
+                    self.perform_destroy(tarea)
+                    hechas += 1
+                    continue
+                body = dict(datos)
+                if agregar or quitar:
+                    actuales = set(tarea.asignaciones.values_list('persona_id', flat=True))
+                    body['asignados'] = sorted((actuales | agregar) - quitar)
+                serializer = self.get_serializer(tarea, data=body, partial=True)
+                serializer.is_valid(raise_exception=True)
+                self.perform_update(serializer)
+                hechas += 1
+            except Exception as e:  # noqa: BLE001 — cada tarea se informa por separado
+                detalle = getattr(e, 'detail', None) or str(e)
+                errores.append({'id': tarea.id, 'titulo': tarea.titulo, 'detalle': _texto_error(detalle)})
+        return Response({'hechas': hechas, 'errores': errores})
 
     def perform_destroy(self, instance):
         gid, cal_id = instance.google_event_id, instance.google_calendar_id

@@ -126,6 +126,21 @@ def al_cambiar_estado(tarea, anterior, actor=None):
     _seguro(_al_cambiar_estado, tarea, anterior, actor)
 
 
+def _al_comentar(tarea, comentario, actor):
+    # Responsables, quien la creó y quienes ya comentaron (sin repetir y sin el autor).
+    usuarios = _responsables(tarea)
+    if tarea.user_id:
+        usuarios += list(User.objects.filter(pk=tarea.user_id, is_active=True))
+    usuarios += list(User.objects.filter(pk__in=tarea.comentarios.values('autor_id'), is_active=True))
+    nombre = (actor.persona.nombre if actor and actor.persona_id else getattr(actor, 'username', '')) or 'Alguien'
+    texto = comentario.texto if len(comentario.texto) <= 140 else comentario.texto[:139] + '…'
+    notificar(usuarios, 'tarea_comentario', f'{nombre} comentó en «{tarea.titulo}»', texto, url_tarea(tarea), tarea=tarea, excluir=actor)
+
+
+def al_comentar(tarea, comentario, actor=None):
+    _seguro(_al_comentar, tarea, comentario, actor)
+
+
 def _responsables(tarea):
     ids = list(tarea.asignaciones.values_list('persona_id', flat=True))
     if ids:

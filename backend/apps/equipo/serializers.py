@@ -11,7 +11,9 @@ from apps.clientes.models import Cliente
 from apps.core.permissions import es_admin, persona_de
 from apps.core.utils import MES_RE
 
-from .models import AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, Subtarea, Tarea, TareaRecurrente
+from .models import (
+    AsignacionCliente, AsignacionTarea, Liquidacion, LiquidacionItem, Persona, PlantillaTarea, Subtarea, Tarea, TareaRecurrente,
+)
 from .services import ESTADOS_DE_AVANCE, MAX_LINKS_TAREA, ajustar_por_dependencias, crearia_ciclo, heredar_links
 
 MAX_POR_DIA = 10
@@ -423,6 +425,33 @@ class TareaRecurrenteSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PlantillaTareaSerializer(serializers.ModelSerializer):
+    personas = serializers.PrimaryKeyRelatedField(many=True, required=False, queryset=Persona.objects.all())
+    dias_plazo = serializers.IntegerField(min_value=0, max_value=365, required=False, allow_null=True)
+
+    class Meta:
+        model = PlantillaTarea
+        fields = ('id', 'nombre', 'titulo', 'descripcion', 'etiqueta', 'prioridad', 'subtareas', 'personas', 'dias_plazo')
+        read_only_fields = ('id',)
+
+    def validate_nombre(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Poné un nombre a la plantilla.')
+        return value
+
+    def validate_etiqueta(self, value):
+        return TareaSerializer.validate_etiqueta(self, value) if value else ''
+
+    def validate_subtareas(self, value):
+        if not isinstance(value, list) or any(not isinstance(x, str) for x in value):
+            raise serializers.ValidationError('El checklist tiene que ser una lista de textos.')
+        items = [x.strip()[:200] for x in value if x.strip()]
+        if len(items) > MAX_SUBTAREAS:
+            raise serializers.ValidationError(f'Máximo {MAX_SUBTAREAS} ítems.')
+        return items
+
+
 class PersonaBasicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Persona
@@ -448,7 +477,10 @@ class PersonaSerializer(serializers.ModelSerializer):
 
     def get_usuario(self, obj):
         u = getattr(obj, 'usuario', None)
-        return u.username if u else None
+        if u is None:
+            return None
+        return {'id': u.id, 'username': u.username, 'email': u.email, 'first_name': u.first_name, 'last_name': u.last_name,
+                'rol': u.rol, 'roles': u.roles, 'is_active': u.is_active, 'persona': obj.id}
 
     def get_clientes(self, obj):
         return [

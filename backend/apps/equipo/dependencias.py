@@ -6,6 +6,7 @@ un fallo de Google o de los avisos nunca impide guardar.
 
 import logging
 
+from .actividad import registrar
 from .models import Tarea
 from .services import ajustar_por_dependencias, heredar_links
 
@@ -34,6 +35,9 @@ def propagar(tarea, anterior, actor=None, sincronizar=True) -> list:
         except Exception:
             logger.exception('No se pudo revisar la dependencia de la tarea %s', dep.pk)
             continue
+        if resultado:
+            registrar(dep, f'{"Se desbloqueó" if resultado == "desbloqueada" else "Quedó bloqueada"}: «{tarea.titulo}» '
+                           f'{"está Hecha" if tarea.estado == "hecha" else "se reabrió"}')
         if resultado == 'desbloqueada':
             avisos.tarea_disponible(dep, tarea, actor)
         elif resultado is None and tarea.estado != 'hecha' and dep.estado != 'bloqueada':

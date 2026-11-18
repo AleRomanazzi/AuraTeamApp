@@ -99,6 +99,49 @@ class Subtarea(models.Model):
         return self.titulo
 
 
+class ComentarioTarea(models.Model):
+    tarea = models.ForeignKey(Tarea, on_delete=models.CASCADE, related_name='comentarios')
+    autor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    texto = models.TextField()
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['creado', 'id']
+
+
+class ActividadTarea(models.Model):
+    """Registro de cambios de una tarea (quién cambió qué). `usuario` vacío: lo hizo el sistema."""
+
+    tarea = models.ForeignKey(Tarea, on_delete=models.CASCADE, related_name='actividad')
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    texto = models.CharField(max_length=300)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['creado', 'id']
+
+
+class PlantillaTarea(models.Model):
+    """Molde para crear tareas que se repiten a mano (un reel, una cobertura): completa el formulario de una nueva."""
+
+    nombre = models.CharField(max_length=80)
+    titulo = models.CharField(max_length=200, blank=True)
+    descripcion = models.TextField(blank=True)
+    etiqueta = models.CharField(max_length=LARGO_ETIQUETA, blank=True)
+    prioridad = models.CharField(max_length=6, choices=PRIORIDAD_TAREA, default='media')
+    subtareas = models.JSONField(default=list, blank=True)
+    personas = models.ManyToManyField(Persona, blank=True, related_name='+')
+    # Días desde hoy para la fecha límite (vacío: sin fecha).
+    dias_plazo = models.PositiveSmallIntegerField(null=True, blank=True)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nombre']
+
+    def __str__(self):
+        return self.nombre
+
+
 class TareaRecurrente(models.Model):
     """Plantilla que genera sola sus tareas: `por_dia` tareas en cada día de `dias` (0 = lunes).
 

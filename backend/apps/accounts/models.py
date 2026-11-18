@@ -12,11 +12,29 @@ ROLES_EQUIPO = [
     ('colaborador', 'Colaborador'),
 ]
 
-# Secciones extra que habilita cada rol, además de lo común a todo el equipo
-# (mi panel, tareas, calendario, sus pagos y su cuenta).
+# Secciones extra que puede habilitar un rol, además de lo común a todo el equipo
+# (mi panel, tareas, calendario, sus pagos y su cuenta). Qué rol tiene cuál se edita en Configuración → Permisos.
+PERMISOS = [
+    ('clientes', 'Fichas de clientes (sin montos)'),
+    ('estadisticas', 'Estadísticas'),
+    ('plan_tareas', 'Plan del mes de sus clientes'),
+]
+# Valores de fábrica (mientras nadie los cambie desde el panel).
 PERMISOS_POR_ROL = {
     'cm': {'clientes', 'estadisticas', 'plan_tareas'},
 }
+CACHE_PERMISOS = 'permisos_por_rol'
+
+
+def permisos_por_rol() -> dict[str, set[str]]:
+    from django.core.cache import cache
+
+    datos = cache.get(CACHE_PERMISOS)
+    if datos is None:
+        fila = ConfigPermisos.objects.filter(pk=1).first()
+        datos = fila.por_rol if fila else {r: sorted(p) for r, p in PERMISOS_POR_ROL.items()}
+        cache.set(CACHE_PERMISOS, datos, 300)
+    return {r: set(p) for r, p in datos.items()}
 
 
 class User(AbstractUser):
@@ -35,7 +53,8 @@ class User(AbstractUser):
 
     @property
     def permisos(self) -> set[str]:
-        return set().union(*(PERMISOS_POR_ROL.get(r, set()) for r in self.roles or []))
+        por_rol = permisos_por_rol()
+        return set().union(*(por_rol.get(r, set()) for r in self.roles or []))
 
 
 class CuentaGoogle(models.Model):
@@ -55,3 +74,16 @@ class CuentaGoogle(models.Model):
 
     def __str__(self):
         return self.email or 'Cuenta de Google'
+
+
+class ConfigPermisos(models.Model):
+    """Fila única: permisos extra de cada rol del equipo ({rol: [permiso, …]})."""
+
+    por_rol = models.JSONField(default=dict)
+
+    def save(self, *args, **kwargs):
+        from django.core.cache import cache
+
+        self.pk = 1
+        super().save(*args, **kwargs)
+        cache.delete(CACHE_PERMISOS)
